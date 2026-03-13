@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +11,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, Users, Shield, Plus, Loader2, Save, KeyRound } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Building2, Users, Plus, Loader2, Save, Palette } from "lucide-react";
+import { getInitials } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/page-header";
+import { GlassCard } from "@/components/shared/glass-card";
+import { ThemeToggle } from "@/components/shared/theme-toggle";
 import toast from "react-hot-toast";
+
+const roleColors: Record<string, string> = {
+  ADMIN: "bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300",
+  LAB_OWNER: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300",
+  RECEPTION: "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300",
+  TECHNICIAN: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+  DENTIST: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
+};
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -52,167 +65,217 @@ export default function SettingsPage() {
     } catch (err: any) { toast.error(err.message || "Failed to create user"); } finally { setSaving(false); }
   };
 
-  const roleColors: Record<string, string> = {
-    ADMIN: "bg-purple-50 text-purple-700 border border-purple-200",
-    LAB_OWNER: "bg-blue-50 text-blue-700 border border-blue-200",
-    RECEPTION: "bg-sky-50 text-sky-700 border border-sky-200",
-    TECHNICIAN: "bg-amber-50 text-amber-700 border border-amber-200",
-    DENTIST: "bg-green-50 text-green-700 border border-green-200",
-  };
-
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Settings</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">Manage your lab settings and users</p>
-      </div>
+    <div className="space-y-6 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
+      <PageHeader title="Settings" subtitle="Manage your lab settings and users" />
 
-      <Tabs defaultValue="lab">
-        <TabsList className="bg-slate-100 rounded-xl p-1">
-          <TabsTrigger value="lab" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-sm">
-            <Building2 className="h-4 w-4 mr-1.5" />Lab Info
-          </TabsTrigger>
-          <TabsTrigger value="users" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-sm">
-            <Users className="h-4 w-4 mr-1.5" />Users
-          </TabsTrigger>
-          <TabsTrigger value="security" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm text-sm">
-            <Shield className="h-4 w-4 mr-1.5" />Security
-          </TabsTrigger>
-        </TabsList>
+      <div className="max-w-4xl">
+        <Tabs defaultValue="lab">
+          <TabsList className="bg-muted/80 backdrop-blur rounded-full p-1 h-auto border border-border/50">
+            <TabsTrigger
+              value="lab"
+              className="rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground text-sm px-4 py-2"
+            >
+              <Building2 className="h-4 w-4 mr-1.5" />Lab Info
+            </TabsTrigger>
+            <TabsTrigger
+              value="users"
+              className="rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground text-sm px-4 py-2"
+            >
+              <Users className="h-4 w-4 mr-1.5" />Users
+            </TabsTrigger>
+            <TabsTrigger
+              value="preferences"
+              className="rounded-full data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground text-sm px-4 py-2"
+            >
+              <Palette className="h-4 w-4 mr-1.5" />Preferences
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="lab">
-          <Card className="rounded-xl border-0 shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-blue-50">
-                  <Building2 className="h-5 w-5 text-blue-600" />
+          {/* Lab Info Tab */}
+          <TabsContent value="lab" className="mt-6">
+            <GlassCard hover="none" delay={0.1}>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50">
+                  <Building2 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-semibold text-slate-800">Lab Information</CardTitle>
-                  <CardDescription>Your lab profile and configuration</CardDescription>
+                  <h3 className="text-base font-semibold text-foreground">Lab Information</h3>
+                  <p className="text-sm text-muted-foreground">Your lab profile and configuration</p>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Lab Name</Label><Input defaultValue={user?.labName || ""} className="rounded-xl" /></div>
-                <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Email</Label><Input defaultValue="" className="rounded-xl" /></div>
-                <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Phone</Label><Input defaultValue="" className="rounded-xl" /></div>
-                <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Currency</Label><Input defaultValue="INR" className="rounded-xl" /></div>
+              <div className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-foreground">Lab Name</Label>
+                    <Input defaultValue={user?.labName || ""} className="rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-foreground">Email</Label>
+                    <Input defaultValue="" className="rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-foreground">Phone</Label>
+                    <Input defaultValue="" className="rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-foreground">Currency</Label>
+                    <Input defaultValue="INR" className="rounded-xl" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-foreground">Address</Label>
+                  <Input defaultValue="" className="rounded-xl" />
+                </div>
+                <Button className="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white shadow-lg shadow-indigo-500/25">
+                  <Save className="h-4 w-4 mr-2" />Save Changes
+                </Button>
               </div>
-              <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Address</Label><Input defaultValue="" className="rounded-xl" /></div>
-              <Button className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md shadow-sky-500/20">
-                <Save className="h-4 w-4 mr-2" />Save Changes
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </GlassCard>
+          </TabsContent>
 
-        <TabsContent value="users">
-          <Card className="rounded-xl border-0 shadow-sm">
-            <CardHeader>
-              <div className="flex items-center justify-between">
+          {/* Users Tab */}
+          <TabsContent value="users" className="mt-6">
+            <GlassCard padding="p-0" hover="none" delay={0.1}>
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-border/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-purple-50">
-                    <Users className="h-5 w-5 text-purple-600" />
+                  <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/50">
+                    <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
-                    <CardTitle className="text-base font-semibold text-slate-800">Team Members</CardTitle>
-                    <CardDescription>Manage users and their roles</CardDescription>
+                    <h3 className="text-base font-semibold text-foreground">Team Members</h3>
+                    <p className="text-sm text-muted-foreground">Manage users and their roles</p>
                   </div>
                 </div>
-                <Button onClick={() => setUserDialogOpen(true)} className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md shadow-sky-500/20">
+                <Button
+                  onClick={() => setUserDialogOpen(true)}
+                  className="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white shadow-lg shadow-indigo-500/25"
+                >
                   <Plus className="h-4 w-4 mr-2" />Add User
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
+
+              {/* Table */}
               {loading ? (
-                <div className="text-center py-12">
-                  <div className="w-8 h-8 rounded-full border-2 border-sky-200 border-t-sky-500 animate-spin mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Loading...</p>
+                <div className="p-6 space-y-4">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <Skeleton className="h-4 w-[150px]" />
+                      <Skeleton className="h-4 w-[180px]" />
+                      <Skeleton className="h-4 w-[80px]" />
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                        <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</TableHead>
-                        <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</TableHead>
-                        <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</TableHead>
-                        <TableHead className="text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</TableHead>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border/50">
+                        <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</TableHead>
+                        <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email</TableHead>
+                        <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</TableHead>
+                        <TableHead className="text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((u) => {
-                        const initials = u.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "U";
+                      {users.map((u, index) => {
+                        const initials = getInitials(u.name || "U");
                         return (
-                          <TableRow key={u.id} className="hover:bg-sky-50/30 transition-colors">
+                          <motion.tr
+                            key={u.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: index * 0.03 }}
+                            className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                          >
                             <TableCell>
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                   {initials}
                                 </div>
-                                <span className="font-semibold text-sm text-slate-700">{u.name}</span>
+                                <span className="font-semibold text-sm text-foreground">{u.name}</span>
                               </div>
                             </TableCell>
-                            <TableCell className="text-sm text-slate-500">{u.email}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{u.email}</TableCell>
                             <TableCell>
-                              <Badge className={`${roleColors[u.role] || 'bg-slate-100 text-slate-600'} text-[11px] font-medium rounded-full px-2.5 py-0.5`}>{u.role}</Badge>
+                              <Badge className={`${roleColors[u.role] || "bg-muted text-muted-foreground"} text-[11px] font-medium rounded-full px-2.5 py-0.5 border-0`}>
+                                {u.role}
+                              </Badge>
                             </TableCell>
                             <TableCell className="text-center">
-                              <Badge className={`rounded-full text-xs ${
+                              <Badge className={`rounded-full text-xs border-0 ${
                                 u.active
-                                  ? "bg-green-50 text-green-700 border border-green-200"
-                                  : "bg-red-50 text-red-700 border border-red-200"
-                              }`}>{u.active ? "Active" : "Inactive"}</Badge>
+                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                                  : "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                              }`}>
+                                {u.active ? "Active" : "Inactive"}
+                              </Badge>
                             </TableCell>
-                          </TableRow>
+                          </motion.tr>
                         );
                       })}
                     </TableBody>
                   </Table>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </GlassCard>
+          </TabsContent>
 
-        <TabsContent value="security">
-          <Card className="rounded-xl border-0 shadow-sm">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-amber-50">
-                  <KeyRound className="h-5 w-5 text-amber-600" />
+          {/* Preferences Tab */}
+          <TabsContent value="preferences" className="mt-6">
+            <GlassCard hover="none" delay={0.1}>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/50">
+                  <Palette className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-semibold text-slate-800">Security Settings</CardTitle>
-                  <CardDescription>Password and authentication settings</CardDescription>
+                  <h3 className="text-base font-semibold text-foreground">Preferences</h3>
+                  <p className="text-sm text-muted-foreground">Customize your experience</p>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Current Password</Label><Input type="password" className="rounded-xl" /></div>
-              <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">New Password</Label><Input type="password" className="rounded-xl" /></div>
-              <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Confirm Password</Label><Input type="password" className="rounded-xl" /></div>
-              <Button className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md shadow-sky-500/20">
-                <Shield className="h-4 w-4 mr-2" />Update Password
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
 
+              <div className="space-y-6">
+                {/* Appearance Section */}
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground mb-4">Appearance</h4>
+                  <div className="flex items-center justify-between p-4 rounded-xl bg-muted/50 border border-border/50">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Dark Mode</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Switch between light and dark themes</p>
+                    </div>
+                    <ThemeToggle />
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Add User Dialog */}
       <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
         <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader><DialogTitle className="text-lg font-bold text-slate-800">Add User</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-foreground">Add User</DialogTitle>
+          </DialogHeader>
           <form onSubmit={handleAddUser} className="space-y-4">
-            <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Name *</Label><Input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} required className="rounded-xl" /></div>
-            <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Email *</Label><Input type="email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required className="rounded-xl" /></div>
-            <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Password *</Label><Input type="password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} required minLength={6} className="rounded-xl" /></div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-foreground">Name *</Label>
+              <Input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} required className="rounded-xl" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-foreground">Email *</Label>
+              <Input type="email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required className="rounded-xl" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-foreground">Password *</Label>
+              <Input type="password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} required minLength={6} className="rounded-xl" />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Role</Label>
+                <Label className="text-sm font-medium text-foreground">Role</Label>
                 <Select value={userForm.role} onValueChange={(v) => setUserForm({ ...userForm, role: v })}>
                   <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                   <SelectContent className="rounded-xl">
@@ -224,11 +287,14 @@ export default function SettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">Phone</Label><Input value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="rounded-xl" /></div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-foreground">Phone</Label>
+                <Input value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="rounded-xl" />
+              </div>
             </div>
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => setUserDialogOpen(false)} className="rounded-xl">Cancel</Button>
-              <Button type="submit" disabled={saving} className="rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700">
+              <Button type="submit" disabled={saving} className="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white shadow-lg shadow-indigo-500/25">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Create User
               </Button>
             </DialogFooter>

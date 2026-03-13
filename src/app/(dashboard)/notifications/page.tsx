@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Bell, CheckCheck, Info, AlertTriangle, DollarSign, FolderOpen } from "lucide-react";
-import { formatDateTime } from "@/lib/utils";
+import { getRelativeTime } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
 import toast from "react-hot-toast";
 
 const typeIcons: Record<string, any> = {
@@ -15,11 +17,11 @@ const typeIcons: Record<string, any> = {
   alert: AlertTriangle,
 };
 
-const typeColors: Record<string, { bg: string; text: string; border: string }> = {
-  info: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-100" },
-  case: { bg: "bg-sky-50", text: "text-sky-600", border: "border-sky-100" },
-  payment: { bg: "bg-green-50", text: "text-green-600", border: "border-green-100" },
-  alert: { bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-100" },
+const typeColors: Record<string, { bg: string; text: string }> = {
+  info: { bg: "bg-blue-50 dark:bg-blue-950/50", text: "text-blue-500 dark:text-blue-400" },
+  case: { bg: "bg-indigo-50 dark:bg-indigo-950/50", text: "text-indigo-500 dark:text-indigo-400" },
+  payment: { bg: "bg-emerald-50 dark:bg-emerald-950/50", text: "text-emerald-500 dark:text-emerald-400" },
+  alert: { bg: "bg-amber-50 dark:bg-amber-950/50", text: "text-amber-500 dark:text-amber-400" },
 };
 
 export default function NotificationsPage() {
@@ -63,74 +65,84 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Notifications</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            {unreadCount > 0 ? (
-              <span className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
-                {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
-              </span>
-            ) : (
-              "All caught up!"
-            )}
-          </p>
-        </div>
+    <div className="space-y-6 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
+      <PageHeader
+        title="Notifications"
+        subtitle={
+          unreadCount > 0
+            ? `${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}`
+            : "All caught up!"
+        }
+      >
         {unreadCount > 0 && (
-          <Button variant="outline" onClick={markAllRead} className="rounded-xl border-sky-200 text-sky-600 hover:bg-sky-50">
+          <Button variant="outline" onClick={markAllRead} className="rounded-xl">
             <CheckCheck className="h-4 w-4 mr-2" />Mark All Read
           </Button>
         )}
-      </div>
+      </PageHeader>
 
-      <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <div className="w-8 h-8 rounded-full border-2 border-sky-200 border-t-sky-500 animate-spin mx-auto mb-3" />
-              <p className="text-sm">Loading...</p>
-            </div>
-          ) : notifications.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                <Bell className="h-8 w-8 text-slate-300" />
+      <div className="max-w-3xl space-y-3">
+        {loading ? (
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="rounded-2xl border border-border/50 bg-card p-4 flex items-start gap-4">
+                <Skeleton className="h-10 w-10 rounded-xl" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-[200px]" />
+                  <Skeleton className="h-3 w-[300px]" />
+                  <Skeleton className="h-3 w-[100px]" />
+                </div>
               </div>
-              <p className="font-medium text-slate-500">No notifications yet</p>
-              <p className="text-sm text-slate-400 mt-1">You are all caught up!</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {notifications.map((n) => {
-                const Icon = typeIcons[n.type] || Info;
-                const colors = typeColors[n.type] || typeColors.info;
-                return (
-                  <div
-                    key={n.id}
-                    className={`flex items-start gap-4 p-4 transition-all duration-200 cursor-pointer hover:bg-slate-50/80 ${
-                      !n.read ? "bg-sky-50/30 border-l-[3px] border-l-sky-400" : "border-l-[3px] border-l-transparent"
-                    }`}
-                    onClick={() => !n.read && markRead(n.id)}
-                  >
-                    <div className={`p-2.5 rounded-xl shrink-0 ${colors.bg} ${colors.text} border ${colors.border}`}>
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className={`text-sm ${!n.read ? "font-semibold text-slate-800" : "text-slate-600"}`}>{n.title}</p>
-                        {!n.read && <div className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />}
-                      </div>
-                      <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
-                      <p className="text-xs text-slate-400 mt-1.5 font-medium">{formatDateTime(n.createdAt)}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </div>
+        ) : notifications.length === 0 ? (
+          <EmptyState
+            icon={Bell}
+            title="No notifications yet"
+            description="You are all caught up! Notifications will appear here."
+          />
+        ) : (
+          notifications.map((n, index) => {
+            const Icon = typeIcons[n.type] || Info;
+            const colors = typeColors[n.type] || typeColors.info;
+            return (
+              <motion.div
+                key={n.id}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
+                onClick={() => !n.read && markRead(n.id)}
+                className={`flex items-start gap-4 p-4 rounded-2xl border transition-all duration-200 cursor-pointer hover:shadow-sm ${
+                  !n.read
+                    ? "border-primary/20 bg-primary/5 dark:bg-primary/10"
+                    : "border-border/50 bg-card hover:bg-accent/50"
+                }`}
+              >
+                {/* Icon */}
+                <div className={`p-2.5 rounded-xl shrink-0 ${colors.bg}`}>
+                  <Icon className={`h-4 w-4 ${colors.text}`} />
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm ${!n.read ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                    {n.title}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1.5 font-medium">
+                    {getRelativeTime(n.createdAt)}
+                  </p>
+                </div>
+
+                {/* Unread dot */}
+                {!n.read && (
+                  <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-2" />
+                )}
+              </motion.div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

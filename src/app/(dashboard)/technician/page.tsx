@@ -2,15 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wrench, CheckCircle2, Clock, PlayCircle, Filter, FolderOpen } from "lucide-react";
-import { formatCurrency, formatDate, getStatusColor, getPriorityColor } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Wrench, CheckCircle2, Clock, PlayCircle, FolderOpen, AlertTriangle, LayoutList } from "lucide-react";
+import { formatDate, getStatusColor } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { GlassCard } from "@/components/shared/glass-card";
+import { EmptyState } from "@/components/shared/empty-state";
 import toast from "react-hot-toast";
 import Link from "next/link";
+
+const STATUS_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "RECEIVED", label: "Received" },
+  { value: "WORKING", label: "Working" },
+  { value: "TRIAL", label: "Trial" },
+  { value: "FINISHED", label: "Finished" },
+];
 
 export default function TechnicianPage() {
   const { data: session } = useSession();
@@ -45,144 +57,153 @@ export default function TechnicianPage() {
   const activeCases = cases.filter((c) => ["RECEIVED", "WORKING", "TRIAL"].includes(c.status));
   const completedCases = cases.filter((c) => ["FINISHED", "DELIVERED"].includes(c.status));
 
+  const isOverdue = (dueDate: string | null) => {
+    if (!dueDate) return false;
+    return new Date(dueDate) < new Date();
+  };
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Technician Panel</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">Your assigned cases and work progress</p>
-      </div>
+    <div className="space-y-6 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
+      <PageHeader title="My Cases" subtitle="Your assigned cases and work progress" />
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-5 relative">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-orange-500" />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active Cases</p>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{activeCases.length}</p>
-              </div>
-              <div className="bg-amber-50 text-amber-600 p-2.5 rounded-xl"><Clock className="h-5 w-5" /></div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-5 relative">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-400 to-green-500" />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Completed</p>
-                <p className="text-2xl font-bold text-green-600 mt-1">{completedCases.length}</p>
-              </div>
-              <div className="bg-green-50 text-green-600 p-2.5 rounded-xl"><CheckCircle2 className="h-5 w-5" /></div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-5 relative">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-sky-400 to-blue-500" />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Cases</p>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{cases.length}</p>
-              </div>
-              <div className="bg-blue-50 text-blue-600 p-2.5 rounded-xl"><Wrench className="h-5 w-5" /></div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard title="Active Cases" value={activeCases.length} icon={Clock} color="indigo" delay={0} />
+        <StatCard title="Completed" value={completedCases.length} icon={CheckCircle2} color="emerald" delay={0.1} />
+        <StatCard title="Total Cases" value={cases.length} icon={Wrench} color="slate" delay={0.2} />
       </div>
 
+      {/* Status Filter Pills */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.25 }}
+        className="flex flex-wrap gap-2"
+      >
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setStatusFilter(f.value)}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
+              statusFilter === f.value
+                ? "bg-primary text-white shadow-md shadow-indigo-500/25"
+                : "bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </motion.div>
+
       {/* Cases Table */}
-      <Card className="rounded-xl border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-sky-500" />
-              Assigned Cases
-            </CardTitle>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px] rounded-xl border-slate-200">
-                <Filter className="h-4 w-4 mr-2 text-slate-400" />
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="RECEIVED">Received</SelectItem>
-                <SelectItem value="WORKING">Working</SelectItem>
-                <SelectItem value="TRIAL">Trial</SelectItem>
-                <SelectItem value="FINISHED">Finished</SelectItem>
-              </SelectContent>
-            </Select>
+      <GlassCard padding="p-0" hover="none" delay={0.3}>
+        {loading ? (
+          <div className="p-6 space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-4 w-[100px]" />
+                <Skeleton className="h-4 w-[120px]" />
+                <Skeleton className="h-4 w-[100px]" />
+                <Skeleton className="h-4 w-[80px]" />
+                <Skeleton className="h-4 w-[80px]" />
+                <Skeleton className="h-4 w-[70px]" />
+              </div>
+            ))}
           </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="w-8 h-8 rounded-full border-2 border-sky-200 border-t-sky-500 animate-spin mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Case #</TableHead>
-                    <TableHead className="hidden sm:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Dentist</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Work Type</TableHead>
-                    <TableHead className="hidden md:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Due Date</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</TableHead>
-                    <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cases.map((c) => (
-                    <TableRow key={c.id} className="hover:bg-sky-50/30 transition-colors">
+        ) : cases.length === 0 ? (
+          <EmptyState
+            icon={FolderOpen}
+            title="No cases assigned"
+            description="New cases will appear here when they are assigned to you."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border/50">
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Case #</TableHead>
+                  <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dentist</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Work Type</TableHead>
+                  <TableHead className="hidden md:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Due Date</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</TableHead>
+                  <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cases.map((c, index) => {
+                  const overdue = isOverdue(c.dueDate) && !["FINISHED", "DELIVERED"].includes(c.status);
+                  return (
+                    <motion.tr
+                      key={c.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.03 }}
+                      className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                    >
                       <TableCell>
-                        <Link href={`/cases/${c.id}`} className="text-sky-600 hover:text-sky-700 font-semibold text-sm">{c.caseNumber}</Link>
+                        <Link href={`/cases/${c.id}`} className="text-primary hover:text-primary/80 font-semibold text-sm">
+                          {c.caseNumber}
+                        </Link>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm text-slate-600">{c.dentist?.name}</TableCell>
-                      <TableCell className="text-sm text-slate-600">{c.workType}</TableCell>
-                      <TableCell className="hidden md:table-cell text-sm text-slate-500">{c.dueDate ? formatDate(c.dueDate) : "-"}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{c.dentist?.name}</TableCell>
+                      <TableCell className="text-sm text-foreground">{c.workType}</TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {c.dueDate ? (
+                          <span className={`text-sm flex items-center gap-1.5 ${overdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}`}>
+                            {overdue && <AlertTriangle className="h-3.5 w-3.5" />}
+                            {formatDate(c.dueDate)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>
-                        <Badge className={`${getStatusColor(c.status)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">{c.status}</Badge>
+                        <Badge className={`${getStatusColor(c.status)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">
+                          {c.status}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         {c.status === "RECEIVED" && (
-                          <Button size="sm" variant="outline" onClick={() => updateStatus(c.id, "WORKING")} className="rounded-lg text-xs hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600">
+                          <Button
+                            size="sm"
+                            onClick={() => updateStatus(c.id, "WORKING")}
+                            className="rounded-xl text-xs bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white shadow-sm shadow-indigo-500/25 h-8"
+                          >
                             <PlayCircle className="h-3.5 w-3.5 mr-1" />Start
                           </Button>
                         )}
                         {c.status === "WORKING" && (
-                          <Button size="sm" variant="outline" onClick={() => updateStatus(c.id, "TRIAL")} className="rounded-lg text-xs hover:bg-amber-50 hover:border-amber-200 hover:text-amber-600">
+                          <Button
+                            size="sm"
+                            onClick={() => updateStatus(c.id, "TRIAL")}
+                            className="rounded-xl text-xs bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-sm shadow-amber-500/25 h-8"
+                          >
                             Trial
                           </Button>
                         )}
                         {c.status === "TRIAL" && (
-                          <Button size="sm" onClick={() => updateStatus(c.id, "FINISHED")} className="rounded-lg text-xs bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 shadow-sm">
+                          <Button
+                            size="sm"
+                            onClick={() => updateStatus(c.id, "FINISHED")}
+                            className="rounded-xl text-xs bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white shadow-sm shadow-emerald-500/25 h-8"
+                          >
                             <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Finish
                           </Button>
                         )}
                         {c.status === "FINISHED" && (
-                          <Badge className="bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold px-2.5 py-0.5">Done</Badge>
+                          <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-full text-xs font-semibold px-2.5 py-0.5">
+                            Done
+                          </Badge>
                         )}
                       </TableCell>
-                    </TableRow>
-                  ))}
-                  {cases.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-12">
-                        <FolderOpen className="h-10 w-10 mx-auto text-slate-300 mb-3" />
-                        <p className="font-medium text-slate-500">No cases assigned</p>
-                        <p className="text-sm text-slate-400 mt-1">New cases will appear here</p>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    </motion.tr>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </GlassCard>
     </div>
   );
 }

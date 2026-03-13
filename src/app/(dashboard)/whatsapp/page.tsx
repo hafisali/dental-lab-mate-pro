@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -23,7 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
 import {
   MessageCircle,
   Send,
@@ -34,7 +33,10 @@ import {
   Loader2,
 } from "lucide-react";
 import { getWhatsAppUrl, messageTemplates } from "@/lib/whatsapp";
-import { formatDateTime, formatCurrency } from "@/lib/utils";
+import { formatDateTime, formatCurrency, getInitials, getRelativeTime } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/page-header";
+import { GlassCard } from "@/components/shared/glass-card";
+import { EmptyState } from "@/components/shared/empty-state";
 import toast from "react-hot-toast";
 
 type Dentist = {
@@ -325,174 +327,216 @@ export default function WhatsAppPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-[#25D366] flex items-center justify-center shadow-md shadow-green-500/20">
-            <MessageCircle className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">WhatsApp Messaging</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              Send messages to dentists via WhatsApp
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
+      <PageHeader title="WhatsApp" subtitle="Send messages to your dentists" />
 
-      {/* Quick Send Section */}
-      <Card className="rounded-xl border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-            <Send className="h-4 w-4 text-[#25D366]" />
-            Quick Send
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Dentist Selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Select Dentist</Label>
-              <Select
-                value={selectedDentistId}
-                onValueChange={setSelectedDentistId}
-              >
-                <SelectTrigger className="rounded-xl border-slate-200">
-                  <SelectValue placeholder="Choose a dentist..." />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  {loadingDentists ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
-                    </div>
-                  ) : (
-                    dentists.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                        {d.clinicName ? ` - ${d.clinicName}` : ""}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {selectedDentist && (
-                <p className="text-xs text-muted-foreground">
-                  Phone: {selectedDentist.whatsapp || selectedDentist.phone || "N/A"}
-                </p>
-              )}
+      {/* Two Column Layout */}
+      <div className="grid gap-6 lg:grid-cols-5">
+        {/* Left: Quick Send */}
+        <div className="lg:col-span-3">
+          <GlassCard hover="none" delay={0.1}>
+            <div className="flex items-center gap-2 mb-5">
+              <Send className="h-4 w-4 text-[#25D366]" />
+              <h3 className="text-base font-semibold text-foreground">Quick Send</h3>
             </div>
 
-            {/* Template Selector */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Message Template</Label>
-              <Select value={template} onValueChange={setTemplate}>
-                <SelectTrigger className="rounded-xl border-slate-200">
-                  <SelectValue placeholder="Choose template..." />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  {TEMPLATE_OPTIONS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Case Selector (shown only when needed) */}
-          {template &&
-            TEMPLATES_NEEDING_CASE.includes(template) &&
-            selectedDentistId && (
+            <div className="space-y-4">
+              {/* Dentist Selector */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Select Case</Label>
-                <Select
-                  value={selectedCaseId}
-                  onValueChange={setSelectedCaseId}
-                >
-                  <SelectTrigger className="rounded-xl border-slate-200">
-                    <SelectValue placeholder="Choose a case..." />
+                <Label className="text-sm font-medium text-foreground">Select Dentist</Label>
+                <Select value={selectedDentistId} onValueChange={setSelectedDentistId}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Choose a dentist..." />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
-                    {loadingCases ? (
+                    {loadingDentists ? (
                       <div className="flex items-center justify-center py-4">
-                        <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
-                      </div>
-                    ) : cases.length === 0 ? (
-                      <div className="text-center py-4 text-sm text-muted-foreground">
-                        No cases found
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
                       </div>
                     ) : (
-                      cases.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.caseNumber} - {c.workType} ({c.status})
-                          {c.patient ? ` - ${c.patient.name}` : ""}
+                      dentists.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                          {d.clinicName ? ` - ${d.clinicName}` : ""}
                         </SelectItem>
                       ))
                     )}
                   </SelectContent>
                 </Select>
+                {selectedDentist && (
+                  <p className="text-xs text-muted-foreground">
+                    Phone: {selectedDentist.whatsapp || selectedDentist.phone || "N/A"}
+                  </p>
+                )}
+              </div>
+
+              {/* Template Cards */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-foreground">Message Template</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {TEMPLATE_OPTIONS.map((t) => (
+                    <button
+                      key={t.value}
+                      onClick={() => setTemplate(t.value)}
+                      className={`px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all duration-200 border ${
+                        template === t.value
+                          ? "border-primary bg-primary/5 text-primary dark:bg-primary/10"
+                          : "border-border bg-card hover:bg-accent text-foreground"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Case Selector (shown only when needed) */}
+              {template && TEMPLATES_NEEDING_CASE.includes(template) && selectedDentistId && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-foreground">Select Case</Label>
+                  <Select value={selectedCaseId} onValueChange={setSelectedCaseId}>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder="Choose a case..." />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      {loadingCases ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        </div>
+                      ) : cases.length === 0 ? (
+                        <div className="text-center py-4 text-sm text-muted-foreground">
+                          No cases found
+                        </div>
+                      ) : (
+                        cases.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.caseNumber} - {c.workType} ({c.status})
+                            {c.patient ? ` - ${c.patient.name}` : ""}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Custom Message Input */}
+              {template === "custom" && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-foreground">Your Message</Label>
+                  <Textarea
+                    placeholder="Type your custom message here..."
+                    value={customMessage}
+                    onChange={(e) => setCustomMessage(e.target.value)}
+                    rows={3}
+                    className="rounded-xl"
+                  />
+                </div>
+              )}
+
+              {/* Message Preview - Chat Bubble */}
+              {messagePreview && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-foreground">Message Preview</Label>
+                  <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 p-4 border border-emerald-100 dark:border-emerald-900/50">
+                    <Textarea
+                      value={messagePreview}
+                      onChange={(e) => setMessagePreview(e.target.value)}
+                      rows={6}
+                      className="bg-transparent border-0 p-0 text-sm font-mono text-foreground resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    You can edit the message before sending
+                  </p>
+                </div>
+              )}
+
+              {/* Send Button */}
+              <Button
+                onClick={handleOpenWhatsApp}
+                disabled={!selectedDentist || !messagePreview || messagePreview.startsWith("Select") || messagePreview.startsWith("Type")}
+                className="bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl shadow-md shadow-green-500/20 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Open in WhatsApp
+                <ExternalLink className="h-3.5 w-3.5 ml-2" />
+              </Button>
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* Right: Recent Messages */}
+        <div className="lg:col-span-2">
+          <GlassCard hover="none" delay={0.2}>
+            <div className="flex items-center gap-2 mb-5">
+              <Clock className="h-4 w-4 text-[#25D366]" />
+              <h3 className="text-base font-semibold text-foreground">Recent Messages</h3>
+            </div>
+
+            {loadingLogs ? (
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <Skeleton className="h-2 w-2 rounded-full mt-2" />
+                    <div className="flex-1 space-y-1">
+                      <Skeleton className="h-3 w-[150px]" />
+                      <Skeleton className="h-3 w-[200px]" />
+                      <Skeleton className="h-3 w-[80px]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : recentLogs.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
+                  <MessageCircle className="h-6 w-6 text-muted-foreground/60" />
+                </div>
+                <p className="text-sm font-medium text-foreground">No messages yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Messages will appear here after sending</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {recentLogs.map((log, index) => (
+                  <motion.div
+                    key={log.id}
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, delay: index * 0.05 }}
+                    className="flex items-start gap-3 p-3 rounded-xl hover:bg-accent/50 transition-colors"
+                  >
+                    {/* Green timeline dot */}
+                    <div className="mt-1.5 shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-[#25D366]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{log.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{log.message}</p>
+                      <p className="text-xs text-muted-foreground/70 mt-1 font-medium">
+                        {getRelativeTime(log.createdAt)}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             )}
-
-          {/* Custom Message Input */}
-          {template === "custom" && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Your Message</Label>
-              <Textarea
-                placeholder="Type your custom message here..."
-                value={customMessage}
-                onChange={(e) => setCustomMessage(e.target.value)}
-                rows={3}
-                className="rounded-xl"
-              />
-            </div>
-          )}
-
-          {/* Message Preview */}
-          {messagePreview && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Message Preview</Label>
-              <Textarea
-                value={messagePreview}
-                onChange={(e) => setMessagePreview(e.target.value)}
-                rows={6}
-                className="bg-slate-50/80 font-mono text-sm rounded-xl border-slate-200"
-              />
-              <p className="text-xs text-muted-foreground">
-                You can edit the message before sending
-              </p>
-            </div>
-          )}
-
-          {/* Send Button */}
-          <Button
-            onClick={handleOpenWhatsApp}
-            disabled={!selectedDentist || !messagePreview || messagePreview.startsWith("Select") || messagePreview.startsWith("Type")}
-            className="bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl shadow-md shadow-green-500/20 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
-          >
-            <MessageCircle className="h-4 w-4 mr-2" />
-            Open in WhatsApp
-            <ExternalLink className="h-3.5 w-3.5 ml-2" />
-          </Button>
-        </CardContent>
-      </Card>
+          </GlassCard>
+        </div>
+      </div>
 
       {/* Bulk Messaging Section */}
-      <Card className="rounded-xl border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
+      <GlassCard padding="p-0" hover="none" delay={0.3}>
+        <div className="p-6 border-b border-border/50">
+          <div className="flex items-center gap-2 mb-4">
             <Users className="h-4 w-4 text-[#25D366]" />
-            Bulk Messaging
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+            <h3 className="text-base font-semibold text-foreground">Bulk Messaging</h3>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Template for Bulk</Label>
+              <Label className="text-sm font-medium text-foreground">Template for Bulk</Label>
               <Select value={bulkTemplate} onValueChange={setBulkTemplate}>
-                <SelectTrigger className="rounded-xl border-slate-200">
+                <SelectTrigger className="rounded-xl">
                   <SelectValue placeholder="Choose template..." />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl">
@@ -503,7 +547,7 @@ export default function WhatsAppPage() {
             </div>
             {bulkTemplate === "custom" && (
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Custom Message</Label>
+                <Label className="text-sm font-medium text-foreground">Custom Message</Label>
                 <Textarea
                   placeholder="Message to send to all selected dentists..."
                   value={bulkCustomMessage}
@@ -515,163 +559,108 @@ export default function WhatsAppPage() {
             )}
           </div>
 
-          <Separator className="bg-slate-100" />
-
           {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <div className="relative mt-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search dentists..."
               value={dentistSearch}
               onChange={(e) => setDentistSearch(e.target.value)}
-              className="pl-9 rounded-xl border-slate-200"
+              className="pl-9 rounded-xl"
             />
           </div>
 
-          {/* Dentist list with checkboxes */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectAll}
-                      onCheckedChange={(checked) =>
-                        handleSelectAll(checked as boolean)
-                      }
-                    />
-                  </TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Dentist</TableHead>
-                  <TableHead className="hidden sm:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Phone</TableHead>
-                  <TableHead className="hidden md:table-cell text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Balance</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDentists.map((d) => {
-                  const initials = d.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "D";
-                  return (
-                    <TableRow key={d.id} className="hover:bg-sky-50/30 transition-colors">
-                      <TableCell>
-                        <Checkbox
-                          checked={bulkDentistIds.has(d.id)}
-                          onCheckedChange={() => toggleBulkDentist(d.id)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                            {initials}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-sm text-slate-700">{d.name}</p>
-                            {d.clinicName && (
-                              <p className="text-xs text-slate-400">
-                                {d.clinicName}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm text-slate-500">
-                        {d.whatsapp || d.phone || "-"}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-right">
-                        <span
-                          className={`text-sm font-semibold ${
-                            d.balance > 0
-                              ? "text-red-600"
-                              : "text-green-600"
-                          }`}
-                        >
-                          {formatCurrency(d.balance)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          onClick={() => handleBulkSend(d)}
-                          disabled={!bulkTemplate}
-                          className="bg-[#25D366] hover:bg-[#128C7E] text-white h-8 rounded-lg text-xs"
-                        >
-                          <MessageCircle className="h-3.5 w-3.5 mr-1" />
-                          Send
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {filteredDentists.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center py-12"
-                    >
-                      <Users className="h-10 w-10 mx-auto text-slate-300 mb-3" />
-                      <p className="font-medium text-slate-500">No dentists found with phone numbers</p>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
           {bulkDentistIds.size > 0 && (
-            <p className="text-sm text-slate-500">
-              <span className="font-semibold text-slate-700">{bulkDentistIds.size}</span> dentist{bulkDentistIds.size !== 1 ? "s" : ""}{" "}
-              selected
+            <p className="text-sm text-muted-foreground mt-3">
+              <span className="font-semibold text-foreground">{bulkDentistIds.size}</span> dentist{bulkDentistIds.size !== 1 ? "s" : ""} selected
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Recent Messages Log */}
-      <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#25D366]" />
-            Recent WhatsApp Messages
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loadingLogs ? (
-            <div className="text-center py-16">
-              <div className="w-8 h-8 rounded-full border-2 border-green-200 border-t-green-500 animate-spin mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            </div>
-          ) : recentLogs.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                <MessageCircle className="h-8 w-8 text-slate-300" />
-              </div>
-              <p className="font-medium text-slate-500">No WhatsApp messages logged yet</p>
-              <p className="text-sm text-slate-400 mt-1">Messages will appear here after sending</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {recentLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex items-start gap-4 p-4 hover:bg-slate-50/80 transition-all duration-200"
-                >
-                  <div className="bg-[#25D366]/10 text-[#25D366] p-2.5 rounded-xl shrink-0 border border-[#25D366]/20">
-                    <MessageCircle className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-700">{log.title}</p>
-                    <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">
-                      {log.message}
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1.5 font-medium">
-                      {formatDateTime(log.createdAt)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {/* Dentist list with checkboxes */}
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border/50">
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={selectAll}
+                    onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                  />
+                </TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dentist</TableHead>
+                <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone</TableHead>
+                <TableHead className="hidden md:table-cell text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Balance</TableHead>
+                <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredDentists.map((d, index) => {
+                const initials = getInitials(d.name || "D");
+                return (
+                  <motion.tr
+                    key={d.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: index * 0.03 }}
+                    className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={bulkDentistIds.has(d.id)}
+                        onCheckedChange={() => toggleBulkDentist(d.id)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {initials}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm text-foreground">{d.name}</p>
+                          {d.clinicName && (
+                            <p className="text-xs text-muted-foreground">{d.clinicName}</p>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                      {d.whatsapp || d.phone || "-"}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-right">
+                      <span className={`text-sm font-semibold ${d.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                        {formatCurrency(d.balance)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        onClick={() => handleBulkSend(d)}
+                        disabled={!bulkTemplate}
+                        className="bg-[#25D366] hover:bg-[#128C7E] text-white h-8 rounded-xl text-xs"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5 mr-1" />
+                        Send
+                      </Button>
+                    </TableCell>
+                  </motion.tr>
+                );
+              })}
+              {filteredDentists.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <EmptyState
+                      icon={Users}
+                      title="No dentists found"
+                      description="No dentists found with phone numbers."
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </GlassCard>
     </div>
   );
 }
