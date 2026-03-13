@@ -1,23 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSession } from "next-auth/react";
+import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/shared/stat-card";
+import { GlassCard } from "@/components/shared/glass-card";
+import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import { AreaChart } from "@/components/charts/area-chart";
+import { DonutChart } from "@/components/charts/donut-chart";
 import {
-  FolderOpen,
-  Clock,
-  CheckCircle2,
-  DollarSign,
-  Wallet,
-  Plus,
-  ArrowRight,
-  TrendingUp,
-  Users,
-  BarChart3,
+  FolderOpen, FolderPlus, Clock, CheckCircle2, DollarSign, AlertCircle,
+  Plus, ArrowRight, Users, TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-import { formatCurrency, formatDate, getStatusColor, getPriorityColor } from "@/lib/utils";
+import { formatCurrency, formatDate, getStatusColor, getPriorityColor, getStatusDot, statusChartColors } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface DashboardData {
@@ -32,295 +32,240 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const { data: session } = useSession();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const userName = (session?.user as any)?.name || "User";
 
   useEffect(() => {
     fetch("/api/dashboard")
       .then((res) => res.json())
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      })
+      .then((d) => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
-  const stats = [
-    {
-      title: "Today's Cases",
-      value: data?.todayCases ?? 0,
-      icon: FolderOpen,
-      gradient: "from-blue-500 to-blue-600",
-      lightBg: "bg-blue-50",
-      lightText: "text-blue-600",
-      shadowColor: "shadow-blue-500/10",
-    },
-    {
-      title: "Pending Cases",
-      value: data?.pendingCases ?? 0,
-      icon: Clock,
-      gradient: "from-amber-500 to-orange-500",
-      lightBg: "bg-amber-50",
-      lightText: "text-amber-600",
-      shadowColor: "shadow-amber-500/10",
-    },
-    {
-      title: "Delivered",
-      value: data?.deliveredCases ?? 0,
-      icon: CheckCircle2,
-      gradient: "from-emerald-500 to-green-500",
-      lightBg: "bg-emerald-50",
-      lightText: "text-emerald-600",
-      shadowColor: "shadow-emerald-500/10",
-    },
-    {
-      title: "Total Income",
-      value: formatCurrency(data?.totalIncome ?? 0),
-      icon: DollarSign,
-      gradient: "from-green-500 to-emerald-600",
-      lightBg: "bg-green-50",
-      lightText: "text-green-600",
-      shadowColor: "shadow-green-500/10",
-    },
-    {
-      title: "Outstanding",
-      value: formatCurrency(data?.totalBalance ?? 0),
-      icon: Wallet,
-      gradient: "from-red-500 to-rose-500",
-      lightBg: "bg-red-50",
-      lightText: "text-red-600",
-      shadowColor: "shadow-red-500/10",
-    },
-  ];
+  // Transform status breakdown for donut chart
+  const statusDonutData = (data?.statusBreakdown || []).map((item) => ({
+    name: item.status,
+    value: item.count,
+    color: statusChartColors[item.status] || "#94a3b8",
+  }));
+  const totalCases = statusDonutData.reduce((s, i) => s + i.value, 0);
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Loading your workspace...</p>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
           </div>
+          <Skeleton className="h-10 w-32 rounded-xl" />
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           {[...Array(5)].map((_, i) => (
-            <Card key={i} className="rounded-xl border-0 shadow-sm">
-              <CardContent className="p-5">
-                <div className="h-16 bg-slate-100 rounded-lg animate-pulse" />
-              </CardContent>
-            </Card>
+            <Skeleton key={i} className="h-28 rounded-2xl" />
           ))}
         </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Skeleton className="h-80 rounded-2xl lg:col-span-2" />
+          <Skeleton className="h-80 rounded-2xl" />
+        </div>
+        <Skeleton className="h-96 rounded-2xl" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Welcome back! Here&apos;s your lab overview.</p>
-        </div>
+      <PageHeader title="Dashboard" subtitle={`Welcome back, ${userName}`}>
         <Link href="/cases/new">
-          <Button className="bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md shadow-sky-500/20 rounded-xl transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+          <Button className="bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white shadow-lg shadow-indigo-500/25 rounded-xl transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5">
             <Plus className="h-4 w-4 mr-2" />
             New Case
           </Button>
         </Link>
+      </PageHeader>
+
+      {/* Stats Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <StatCard title="Today's Cases" value={data?.todayCases ?? 0} icon={FolderPlus} color="indigo" delay={0} />
+        <StatCard title="Pending Cases" value={data?.pendingCases ?? 0} icon={Clock} color="amber" delay={0.05} />
+        <StatCard title="Delivered" value={data?.deliveredCases ?? 0} icon={CheckCircle2} color="emerald" delay={0.1} />
+        <StatCard title="Total Income" value={data?.totalIncome ?? 0} icon={DollarSign} color="blue" delay={0.15} format={formatCurrency} />
+        <StatCard title="Outstanding" value={data?.totalBalance ?? 0} icon={AlertCircle} color="rose" delay={0.2} format={formatCurrency} />
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        {stats.map((stat) => (
-          <Card key={stat.title} className={`rounded-xl border-0 shadow-sm hover:shadow-md transition-all duration-200 ${stat.shadowColor} overflow-hidden`}>
-            <CardContent className="p-5 relative">
-              <div className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${stat.gradient}`} />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{stat.title}</p>
-                  <p className="text-2xl font-bold mt-1.5 text-slate-800">{stat.value}</p>
-                </div>
-                <div className={`${stat.lightBg} ${stat.lightText} p-2.5 rounded-xl`}>
-                  <stat.icon className="h-5 w-5" />
-                </div>
+      {/* Charts Row */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Revenue Trend */}
+        <GlassCard className="lg:col-span-2" delay={0.25}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Revenue Trend</h3>
+              <p className="text-sm text-muted-foreground mt-0.5">Monthly revenue over time</p>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary px-3 py-1.5 rounded-full">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Last 6 months
+            </div>
+          </div>
+          {data?.monthlyRevenue && data.monthlyRevenue.length > 0 ? (
+            <AreaChart
+              data={data.monthlyRevenue}
+              xKey="month"
+              yKey="revenue"
+              yLabel="Revenue"
+              color="#6366f1"
+              height={260}
+              formatter={(val) => formatCurrency(val)}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+              No revenue data yet
+            </div>
+          )}
+        </GlassCard>
+
+        {/* Status Donut */}
+        <GlassCard delay={0.3}>
+          <div className="mb-4">
+            <h3 className="text-base font-semibold text-foreground">Case Status</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Distribution overview</p>
+          </div>
+          {statusDonutData.length > 0 ? (
+            <>
+              <DonutChart
+                data={statusDonutData}
+                centerValue={totalCases}
+                centerLabel="Total Cases"
+                height={200}
+              />
+              <div className="mt-4 space-y-2">
+                {statusDonutData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="text-muted-foreground">{item.name}</span>
+                    </div>
+                    <span className="font-semibold text-foreground">{item.value}</span>
+                  </div>
+                ))}
               </div>
-            </CardContent>
-          </Card>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
+              No cases yet
+            </div>
+          )}
+        </GlassCard>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {[
+          { href: "/cases/new", label: "New Case", desc: "Create a new lab case", icon: FolderPlus, color: "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400" },
+          { href: "/dentists", label: "Manage Dentists", desc: "View & manage dentist profiles", icon: Users, color: "bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400" },
+          { href: "/billing", label: "View Billing", desc: "Invoices & payment tracking", icon: DollarSign, color: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400" },
+        ].map((action, i) => (
+          <motion.div
+            key={action.href}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.35 + i * 0.05 }}
+          >
+            <Link href={action.href} className="block">
+              <div className="group flex items-center gap-4 p-4 rounded-2xl bg-card border border-border/50 shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300 hover:-translate-y-0.5">
+                <div className={`p-3 rounded-xl ${action.color} transition-colors`}>
+                  <action.icon className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{action.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{action.desc}</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+              </div>
+            </Link>
+          </motion.div>
         ))}
       </div>
 
-      {/* Middle row */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Status Breakdown */}
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-sky-500" />
-              Case Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {(data?.statusBreakdown || []).map((item) => {
-                const total = (data?.statusBreakdown || []).reduce((s, i) => s + i.count, 0) || 1;
-                const pct = Math.round((item.count / total) * 100);
-                return (
-                  <div key={item.status} className="group">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <Badge className={`${getStatusColor(item.status)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">
-                        {item.status}
-                      </Badge>
-                      <span className="text-sm font-semibold text-slate-700">{item.count}</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-500 transition-all duration-500"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              {(!data?.statusBreakdown || data.statusBreakdown.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-6">No cases yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Monthly Revenue */}
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-emerald-500" />
-              Monthly Revenue
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {(data?.monthlyRevenue || []).slice(0, 6).map((item, index) => (
-                <div key={item.month} className="flex items-center justify-between py-1">
-                  <span className="text-sm text-muted-foreground">{item.month}</span>
-                  <span className="text-sm font-semibold text-slate-700">{formatCurrency(item.revenue)}</span>
-                </div>
-              ))}
-              {(!data?.monthlyRevenue || data.monthlyRevenue.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-6">No revenue data</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold text-slate-800">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2.5">
-              <Link href="/cases/new" className="block">
-                <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-sky-200 hover:bg-sky-50/50 transition-all duration-200 group cursor-pointer">
-                  <div className="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
-                    <FolderOpen className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700 flex-1">New Case</span>
-                  <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-sky-500 group-hover:translate-x-0.5 transition-all" />
-                </div>
-              </Link>
-              <Link href="/dentists" className="block">
-                <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-sky-200 hover:bg-sky-50/50 transition-all duration-200 group cursor-pointer">
-                  <div className="p-2 rounded-lg bg-purple-50 text-purple-600 group-hover:bg-purple-100 transition-colors">
-                    <Users className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700 flex-1">Manage Dentists</span>
-                  <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-sky-500 group-hover:translate-x-0.5 transition-all" />
-                </div>
-              </Link>
-              <Link href="/billing" className="block">
-                <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-sky-200 hover:bg-sky-50/50 transition-all duration-200 group cursor-pointer">
-                  <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100 transition-colors">
-                    <DollarSign className="h-4 w-4" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700 flex-1">View Billing</span>
-                  <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-sky-500 group-hover:translate-x-0.5 transition-all" />
-                </div>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Cases Table */}
-      <Card className="rounded-xl border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold text-slate-800">Recent Cases</CardTitle>
-            <Link href="/cases">
-              <Button variant="ghost" size="sm" className="text-sky-600 hover:text-sky-700 hover:bg-sky-50 rounded-lg">
-                View All
-                <ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
-            </Link>
+      {/* Recent Cases */}
+      <GlassCard delay={0.45} padding="p-0">
+        <div className="flex items-center justify-between p-6 pb-4">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Recent Cases</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Latest case activity</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Case #</TableHead>
-                  <TableHead className="hidden sm:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Dentist</TableHead>
-                  <TableHead className="hidden md:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Work Type</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</TableHead>
-                  <TableHead className="hidden sm:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data?.recentCases || []).map((c: any) => (
-                  <TableRow key={c.id} className="hover:bg-sky-50/30 transition-colors duration-150">
-                    <TableCell>
-                      <Link href={`/cases/${c.id}`} className="text-sky-600 hover:text-sky-700 font-semibold text-sm">
-                        {c.caseNumber}
+          <Link href="/cases">
+            <Button variant="ghost" size="sm" className="text-primary hover:text-primary/80 hover:bg-accent rounded-xl gap-1">
+              View All
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+        <div className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border/50">
+                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pl-6">Case #</TableHead>
+                <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dentist</TableHead>
+                <TableHead className="hidden md:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Work Type</TableHead>
+                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</TableHead>
+                <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Priority</TableHead>
+                <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider pr-6">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(data?.recentCases || []).map((c: any, index: number) => (
+                <motion.tr
+                  key={c.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: 0.5 + index * 0.03 }}
+                  className="border-b border-border/30 hover:bg-accent/50 transition-colors duration-150 group"
+                >
+                  <TableCell className="pl-6">
+                    <Link href={`/cases/${c.id}`} className="text-primary hover:text-primary/80 font-semibold text-sm transition-colors">
+                      {c.caseNumber}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {c.dentist?.id ? (
+                      <Link href={`/dentists/${c.dentist.id}`} className="text-foreground/80 hover:text-primary text-sm transition-colors">
+                        {c.dentist.name}
                       </Link>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      {c.dentist?.id ? (
-                        <Link href={`/dentists/${c.dentist.id}`} className="text-slate-600 hover:text-sky-600 text-sm transition-colors">
-                          {c.dentist.name}
-                        </Link>
-                      ) : <span className="text-slate-400">{c.dentist?.name || "-"}</span>}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-sm text-slate-600">{c.workType}</TableCell>
-                    <TableCell>
+                    ) : <span className="text-muted-foreground">{c.dentist?.name || "-"}</span>}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{c.workType}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-1.5 h-1.5 rounded-full ${getStatusDot(c.status)}`} />
                       <Badge className={`${getStatusColor(c.status)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">
                         {c.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <Badge className={`${getPriorityColor(c.priority)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">
-                        {c.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold text-sm text-slate-700">{formatCurrency(c.amount)}</TableCell>
-                  </TableRow>
-                ))}
-                {(!data?.recentCases || data.recentCases.length === 0) && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
-                      <FolderOpen className="h-10 w-10 mx-auto text-slate-300 mb-3" />
-                      <p className="font-medium text-slate-500">No cases found</p>
-                      <p className="text-sm text-slate-400 mt-1">Create your first case to get started!</p>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <Badge className={`${getPriorityColor(c.priority)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">
+                      {c.priority}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold text-sm text-foreground pr-6">{formatCurrency(c.amount)}</TableCell>
+                </motion.tr>
+              ))}
+              {(!data?.recentCases || data.recentCases.length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={6}>
+                    <EmptyState icon={FolderOpen} title="No cases found" description="Create your first case to get started!" action={{ label: "Create Case", onClick: () => window.location.href = "/cases/new" }} />
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </GlassCard>
     </div>
   );
 }

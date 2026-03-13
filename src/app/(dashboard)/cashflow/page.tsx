@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,17 +32,19 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus,
   TrendingUp,
-  TrendingDown,
-  Wallet,
+  DollarSign,
+  ArrowDownCircle,
   AlertCircle,
   Loader2,
-  IndianRupee,
-  ArrowUpRight,
-  ArrowDownRight,
   FolderOpen,
   Filter,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { GlassCard } from "@/components/shared/glass-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BarChart } from "@/components/charts/bar-chart";
 import toast from "react-hot-toast";
 
 const EXPENSE_CATEGORIES = [
@@ -58,16 +60,16 @@ const EXPENSE_CATEGORIES = [
 
 const getCategoryColor = (category: string): string => {
   const colors: Record<string, string> = {
-    Materials: "bg-blue-50 text-blue-700 border border-blue-200",
-    Rent: "bg-purple-50 text-purple-700 border border-purple-200",
-    Salary: "bg-green-50 text-green-700 border border-green-200",
-    Utilities: "bg-yellow-50 text-yellow-700 border border-yellow-200",
-    Equipment: "bg-indigo-50 text-indigo-700 border border-indigo-200",
-    Marketing: "bg-pink-50 text-pink-700 border border-pink-200",
-    Transport: "bg-orange-50 text-orange-700 border border-orange-200",
-    Other: "bg-slate-100 text-slate-700 border border-slate-200",
+    Materials: "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800",
+    Rent: "bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800",
+    Salary: "bg-green-50 text-green-700 border border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800",
+    Utilities: "bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-300 dark:border-yellow-800",
+    Equipment: "bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:border-indigo-800",
+    Marketing: "bg-pink-50 text-pink-700 border border-pink-200 dark:bg-pink-950/30 dark:text-pink-300 dark:border-pink-800",
+    Transport: "bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-800",
+    Other: "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700",
   };
-  return colors[category] || "bg-slate-100 text-slate-700 border border-slate-200";
+  return colors[category] || "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700";
 };
 
 interface CashFlowData {
@@ -174,342 +176,198 @@ export default function CashFlowPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Cash Flow</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Track income, expenses & net profit</p>
+        <PageHeader title="Cash Flow" subtitle="Track income, expenses & profitability" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-[120px] rounded-2xl bg-muted/60" />
+          ))}
         </div>
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="w-8 h-8 rounded-full border-2 border-sky-200 border-t-sky-500 animate-spin mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Skeleton className="h-[350px] rounded-2xl bg-muted/60 lg:col-span-2" />
+          <Skeleton className="h-[350px] rounded-2xl bg-muted/60" />
         </div>
+        <Skeleton className="h-[400px] rounded-2xl bg-muted/60" />
       </div>
     );
   }
 
   const cm = cashFlow?.currentMonth;
 
+  // Prepare chart data for Revenue vs Expenses
+  const chartData = (cashFlow?.monthlyBreakdown || []).map((row) => ({
+    month: `${row.month.slice(0, 3)} ${row.year}`,
+    Income: row.income,
+    Expenses: row.expenses,
+  }));
+
+  // Prepare horizontal bar chart data for top categories
+  const categoryChartData = (cashFlow?.topCategories || []).slice(0, 6).map((cat) => ({
+    category: cat.category,
+    amount: cat.amount,
+  }));
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Cash Flow</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Track income, expenses & net profit
-          </p>
-        </div>
-        <Button onClick={() => setAddDialogOpen(true)} className="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 shadow-md shadow-red-500/20 rounded-xl transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+      <PageHeader title="Cash Flow" subtitle="Track income, expenses & profitability">
+        <Button
+          onClick={() => setAddDialogOpen(true)}
+          className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-md shadow-indigo-500/20 rounded-xl transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
+        >
           <Plus className="h-4 w-4 mr-2" />
           Add Expense
         </Button>
-      </div>
+      </PageHeader>
 
-      {/* Summary Cards */}
+      {/* Summary StatCards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-5 relative">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-400 to-green-500" />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Income (This Month)
-                </p>
-                <p className="text-2xl font-bold text-green-600 mt-1">
-                  {formatCurrency(cm?.income || 0)}
-                </p>
-                {cashFlow?.lastMonth && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Last month: {formatCurrency(cashFlow.lastMonth.income)}
-                  </p>
-                )}
-              </div>
-              <div className="bg-green-50 text-green-600 p-2.5 rounded-xl">
-                <ArrowUpRight className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-5 relative">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-400 to-rose-500" />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Expenses (This Month)
-                </p>
-                <p className="text-2xl font-bold text-red-600 mt-1">
-                  {formatCurrency(cm?.expenses || 0)}
-                </p>
-                {cashFlow?.lastMonth && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Last month: {formatCurrency(cashFlow.lastMonth.expenses)}
-                  </p>
-                )}
-              </div>
-              <div className="bg-red-50 text-red-600 p-2.5 rounded-xl">
-                <ArrowDownRight className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-5 relative">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-sky-400 to-blue-500" />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Net Profit (This Month)
-                </p>
-                <p
-                  className={`text-2xl font-bold mt-1 ${
-                    (cm?.net || 0) >= 0 ? "text-blue-600" : "text-red-600"
-                  }`}
-                >
-                  {formatCurrency(cm?.net || 0)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Collection rate: {cashFlow?.collectionRate || 0}%
-                </p>
-              </div>
-              <div className="bg-blue-50 text-blue-600 p-2.5 rounded-xl">
-                <TrendingUp className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-5 relative">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-orange-500" />
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Outstanding</p>
-                <p className="text-2xl font-bold text-amber-600 mt-1">
-                  {formatCurrency(cashFlow?.outstandingReceivables || 0)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Unpaid invoices
-                </p>
-              </div>
-              <div className="bg-amber-50 text-amber-600 p-2.5 rounded-xl">
-                <AlertCircle className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Income (This Month)"
+          value={cm?.income || 0}
+          format={formatCurrency}
+          icon={DollarSign}
+          color="emerald"
+          delay={0}
+          trend={cashFlow?.lastMonth ? {
+            value: cashFlow.lastMonth.income > 0
+              ? Math.round(((cm?.income || 0) - cashFlow.lastMonth.income) / cashFlow.lastMonth.income * 100)
+              : 0,
+            label: "vs last month",
+          } : undefined}
+        />
+        <StatCard
+          title="Expenses (This Month)"
+          value={cm?.expenses || 0}
+          format={formatCurrency}
+          icon={ArrowDownCircle}
+          color="rose"
+          delay={0.05}
+          trend={cashFlow?.lastMonth ? {
+            value: cashFlow.lastMonth.expenses > 0
+              ? Math.round(((cm?.expenses || 0) - cashFlow.lastMonth.expenses) / cashFlow.lastMonth.expenses * 100)
+              : 0,
+            label: "vs last month",
+          } : undefined}
+        />
+        <StatCard
+          title="Net Profit"
+          value={cm?.net || 0}
+          format={formatCurrency}
+          icon={TrendingUp}
+          color="indigo"
+          delay={0.1}
+          trend={{ value: cashFlow?.collectionRate || 0, label: "collection rate" }}
+        />
+        <StatCard
+          title="Outstanding"
+          value={cashFlow?.outstandingReceivables || 0}
+          format={formatCurrency}
+          icon={AlertCircle}
+          color="amber"
+          delay={0.15}
+        />
       </div>
 
-      {/* Period Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Last 3 Months
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-2.5">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Income</span>
-                <span className="font-semibold text-green-600">
-                  {formatCurrency(cashFlow?.last3Months?.income || 0)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Expenses</span>
-                <span className="font-semibold text-red-600">
-                  {formatCurrency(cashFlow?.last3Months?.expenses || 0)}
-                </span>
-              </div>
-              <div className="border-t border-slate-100 pt-2.5 flex justify-between text-sm font-semibold">
-                <span className="text-slate-700">Net</span>
-                <span
-                  className={
-                    (cashFlow?.last3Months?.net || 0) >= 0
-                      ? "text-blue-600"
-                      : "text-red-600"
-                  }
-                >
-                  {formatCurrency(cashFlow?.last3Months?.net || 0)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Last 6 Months
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-2.5">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Income</span>
-                <span className="font-semibold text-green-600">
-                  {formatCurrency(cashFlow?.last6Months?.income || 0)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Expenses</span>
-                <span className="font-semibold text-red-600">
-                  {formatCurrency(cashFlow?.last6Months?.expenses || 0)}
-                </span>
-              </div>
-              <div className="border-t border-slate-100 pt-2.5 flex justify-between text-sm font-semibold">
-                <span className="text-slate-700">Net</span>
-                <span
-                  className={
-                    (cashFlow?.last6Months?.net || 0) >= 0
-                      ? "text-blue-600"
-                      : "text-red-600"
-                  }
-                >
-                  {formatCurrency(cashFlow?.last6Months?.net || 0)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Top Expense Categories
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-2.5">
-              {(cashFlow?.topCategories || []).slice(0, 5).map((cat) => (
-                <div key={cat.category} className="flex justify-between items-center text-sm">
-                  <Badge
-                    className={`${getCategoryColor(cat.category)} text-[11px] font-medium rounded-full px-2.5 py-0.5`}
-                    variant="secondary"
-                  >
-                    {cat.category}
-                  </Badge>
-                  <span className="font-semibold text-slate-700">
-                    {formatCurrency(cat.amount)}
-                  </span>
-                </div>
-              ))}
-              {(!cashFlow?.topCategories ||
-                cashFlow.topCategories.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-2">
-                  No expenses recorded
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Monthly Breakdown Table */}
-      <Card className="rounded-xl border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-            <IndianRupee className="h-4 w-4 text-purple-500" />
-            Monthly Breakdown (Last 6 Months)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Month</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Income</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Expenses</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Net Profit</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(cashFlow?.monthlyBreakdown || []).map((row) => (
-                  <TableRow key={`${row.month}-${row.year}`} className="hover:bg-sky-50/30 transition-colors">
-                    <TableCell className="font-semibold text-sm text-slate-700">
-                      {row.month} {row.year}
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-green-600 font-semibold">
-                      {formatCurrency(row.income)}
-                    </TableCell>
-                    <TableCell className="text-right text-sm text-red-600 font-semibold">
-                      {formatCurrency(row.expenses)}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right text-sm font-semibold ${
-                        row.net >= 0 ? "text-blue-600" : "text-red-600"
-                      }`}
-                    >
-                      {formatCurrency(row.net)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {(!cashFlow?.monthlyBreakdown ||
-                  cashFlow.monthlyBreakdown.length === 0) && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      className="text-center py-12"
-                    >
-                      <Wallet className="h-10 w-10 mx-auto text-slate-300 mb-3" />
-                      <p className="font-medium text-slate-500">No data available</p>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+      {/* Charts Row */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Revenue vs Expenses Chart */}
+        <GlassCard className="lg:col-span-2" delay={0.2} padding="p-0">
+          <div className="p-6 pb-2">
+            <h3 className="text-base font-semibold text-foreground">Revenue vs Expenses</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Monthly comparison (last 6 months)</p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="px-2 pb-4">
+            {chartData.length > 0 ? (
+              <BarChart
+                data={chartData}
+                xKey="month"
+                bars={[
+                  { key: "Income", color: "#10b981", name: "Income" },
+                  { key: "Expenses", color: "#ef4444", name: "Expenses" },
+                ]}
+                height={280}
+                formatter={(value) => formatCurrency(value)}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
+                No data available
+              </div>
+            )}
+          </div>
+        </GlassCard>
+
+        {/* Top Expense Categories */}
+        <GlassCard delay={0.25} padding="p-0">
+          <div className="p-6 pb-2">
+            <h3 className="text-base font-semibold text-foreground">Top Expense Categories</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Where your money goes</p>
+          </div>
+          <div className="px-2 pb-4">
+            {categoryChartData.length > 0 ? (
+              <BarChart
+                data={categoryChartData}
+                xKey="category"
+                bars={[{ key: "amount", color: "#6366f1", name: "Amount" }]}
+                height={280}
+                layout="vertical"
+                formatter={(value) => formatCurrency(value)}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">
+                No expenses recorded
+              </div>
+            )}
+          </div>
+        </GlassCard>
+      </div>
 
       {/* Expense List */}
-      <Card className="rounded-xl border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold text-slate-800 flex items-center gap-2">
-              <TrendingDown className="h-4 w-4 text-red-500" />
-              Expenses
-            </CardTitle>
-            <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="w-[160px] rounded-xl border-slate-200">
-                <Filter className="h-4 w-4 mr-2 text-slate-400" />
-                <SelectValue placeholder="Filter by category" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="all">All Categories</SelectItem>
-                {EXPENSE_CATEGORIES.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <GlassCard delay={0.3} padding="p-0">
+        <div className="p-6 pb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Expenses</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">All recorded expenses</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger className="w-[160px] rounded-xl border-border/60">
+              <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+              <SelectValue placeholder="Filter by category" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="all">All Categories</SelectItem>
+              {EXPENSE_CATEGORIES.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="px-6 pb-6">
+          <div className="rounded-xl border border-border/50 overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</TableHead>
-                  <TableHead className="hidden sm:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</TableHead>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Category</TableHead>
+                  <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notes</TableHead>
+                  <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExpenses.map((exp) => (
-                  <TableRow key={exp.id} className="hover:bg-sky-50/30 transition-colors">
-                    <TableCell className="text-sm text-slate-500">
+                {filteredExpenses.map((exp, index) => (
+                  <motion.tr
+                    key={exp.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                  >
+                    <TableCell className="text-sm text-muted-foreground">
                       {formatDate(exp.date)}
                     </TableCell>
-                    <TableCell className="font-semibold text-sm text-slate-700">
+                    <TableCell className="font-semibold text-sm text-foreground">
                       {exp.description}
                     </TableCell>
                     <TableCell>
@@ -520,13 +378,13 @@ export default function CashFlowPage() {
                         {exp.category}
                       </Badge>
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell text-sm text-slate-400">
+                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                       {exp.notes || "-"}
                     </TableCell>
-                    <TableCell className="text-right text-sm font-semibold text-red-600">
+                    <TableCell className="text-right text-sm font-semibold text-rose-600 dark:text-rose-400">
                       {formatCurrency(exp.amount)}
                     </TableCell>
-                  </TableRow>
+                  </motion.tr>
                 ))}
                 {filteredExpenses.length === 0 && (
                   <TableRow>
@@ -534,26 +392,26 @@ export default function CashFlowPage() {
                       colSpan={5}
                       className="text-center py-12"
                     >
-                      <FolderOpen className="h-10 w-10 mx-auto text-slate-300 mb-3" />
-                      <p className="font-medium text-slate-500">No expenses found</p>
+                      <FolderOpen className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+                      <p className="font-medium text-muted-foreground">No expenses found</p>
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </GlassCard>
 
       {/* Add Expense Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="max-w-md rounded-2xl">
+        <DialogContent className="max-w-md rounded-2xl border-border/50">
           <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-slate-800">Add Expense</DialogTitle>
+            <DialogTitle className="text-lg font-bold text-foreground">Add Expense</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleAddExpense} className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Description *</Label>
+              <Label className="text-sm font-medium text-foreground">Description *</Label>
               <Input
                 value={expenseForm.description}
                 onChange={(e) =>
@@ -564,12 +422,12 @@ export default function CashFlowPage() {
                 }
                 placeholder="e.g., Zirconia blocks purchase"
                 required
-                className="rounded-xl"
+                className="rounded-xl border-border/60 focus:ring-indigo-500"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Amount *</Label>
+                <Label className="text-sm font-medium text-foreground">Amount *</Label>
                 <Input
                   type="number"
                   min="0.01"
@@ -580,18 +438,18 @@ export default function CashFlowPage() {
                   }
                   placeholder="0.00"
                   required
-                  className="rounded-xl"
+                  className="rounded-xl border-border/60"
                 />
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-slate-700">Category *</Label>
+                <Label className="text-sm font-medium text-foreground">Category *</Label>
                 <Select
                   value={expenseForm.category}
                   onValueChange={(v) =>
                     setExpenseForm({ ...expenseForm, category: v })
                   }
                 >
-                  <SelectTrigger className="rounded-xl">
+                  <SelectTrigger className="rounded-xl border-border/60">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
@@ -605,18 +463,18 @@ export default function CashFlowPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Date</Label>
+              <Label className="text-sm font-medium text-foreground">Date</Label>
               <Input
                 type="date"
                 value={expenseForm.date}
                 onChange={(e) =>
                   setExpenseForm({ ...expenseForm, date: e.target.value })
                 }
-                className="rounded-xl"
+                className="rounded-xl border-border/60"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-700">Notes</Label>
+              <Label className="text-sm font-medium text-foreground">Notes</Label>
               <Textarea
                 value={expenseForm.notes}
                 onChange={(e) =>
@@ -624,7 +482,7 @@ export default function CashFlowPage() {
                 }
                 rows={2}
                 placeholder="Optional notes..."
-                className="rounded-xl"
+                className="rounded-xl border-border/60"
               />
             </div>
             <DialogFooter className="gap-2">
@@ -636,7 +494,11 @@ export default function CashFlowPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={saving} className="rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700">
+              <Button
+                type="submit"
+                disabled={saving}
+                className="rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+              >
                 {saving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : null}

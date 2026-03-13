@@ -2,15 +2,26 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Filter, FolderOpen, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
-import { formatCurrency, formatDate, getStatusColor, getPriorityColor } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/page-header";
+import { GlassCard } from "@/components/shared/glass-card";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Plus, Search, FolderOpen, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
+import { formatCurrency, formatDate, getStatusColor, getPriorityColor, getStatusDot } from "@/lib/utils";
 import { getWhatsAppUrl, messageTemplates } from "@/lib/whatsapp";
+
+const STATUSES = [
+  { value: "all", label: "All" },
+  { value: "RECEIVED", label: "Received" },
+  { value: "WORKING", label: "Working" },
+  { value: "TRIAL", label: "Trial" },
+  { value: "FINISHED", label: "Finished" },
+  { value: "DELIVERED", label: "Delivered" },
+];
 
 export default function CasesPage() {
   const [cases, setCases] = useState<any[]>([]);
@@ -45,106 +56,138 @@ export default function CasesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Cases</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Manage work orders and case tracking</p>
-        </div>
+      <PageHeader title="Cases" subtitle="Manage work orders and case tracking">
         <Link href="/cases/new">
-          <Button className="bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md shadow-sky-500/20 rounded-xl transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5">
+          <Button className="bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white shadow-lg shadow-indigo-500/25 rounded-xl transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5">
             <Plus className="h-4 w-4 mr-2" />
             New Case
           </Button>
         </Link>
-      </div>
+      </PageHeader>
 
-      <Card className="rounded-xl border-0 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <form onSubmit={handleSearch} className="flex-1 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  placeholder="Search cases, dentists, patients..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 rounded-xl border-slate-200 focus:border-sky-300 focus:ring-sky-200"
-                />
-              </div>
-              <Button type="submit" variant="secondary" className="rounded-xl">Search</Button>
-            </form>
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPagination((p) => ({ ...p, page: 1 })); }}>
-              <SelectTrigger className="w-[160px] rounded-xl border-slate-200">
-                <Filter className="h-4 w-4 mr-2 text-slate-400" />
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="RECEIVED">Received</SelectItem>
-                <SelectItem value="WORKING">Working</SelectItem>
-                <SelectItem value="TRIAL">Trial</SelectItem>
-                <SelectItem value="FINISHED">Finished</SelectItem>
-                <SelectItem value="DELIVERED">Delivered</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <div className="w-8 h-8 rounded-full border-2 border-sky-200 border-t-sky-500 animate-spin mx-auto mb-3" />
-              <p className="text-sm">Loading cases...</p>
+      <GlassCard hover="none" padding="p-0">
+        <div className="p-5 pb-4 space-y-4">
+          {/* Search Bar */}
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search cases, dentists, patients..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full h-10 pl-10 pr-4 rounded-xl border border-border/50 bg-background/50 backdrop-blur-sm text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 dark:focus:ring-indigo-800 transition-all"
+              />
             </div>
+            <Button type="submit" variant="secondary" className="rounded-xl px-5">
+              Search
+            </Button>
+          </form>
+
+          {/* Segmented pill-style status filter */}
+          <div className="flex flex-wrap gap-1.5">
+            {STATUSES.map((s) => (
+              <button
+                key={s.value}
+                onClick={() => {
+                  setStatusFilter(s.value);
+                  setPagination((p) => ({ ...p, page: 1 }));
+                }}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                  statusFilter === s.value
+                    ? "bg-primary text-white shadow-sm"
+                    : "bg-secondary text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="px-5 pb-5">
+          {loading ? (
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-24 hidden sm:block" />
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-24 hidden md:block" />
+                  <Skeleton className="h-4 w-20 hidden md:block" />
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                  <Skeleton className="h-5 w-14 rounded-full hidden sm:block" />
+                  <Skeleton className="h-4 w-16 ml-auto" />
+                </div>
+              ))}
+            </div>
+          ) : cases.length === 0 ? (
+            <EmptyState
+              icon={FolderOpen}
+              title="No cases found"
+              description="Try adjusting your search or filters, or create your first case."
+              action={{ label: "New Case", onClick: () => window.location.href = "/cases/new" }}
+            />
           ) : (
             <>
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="rounded-xl border border-border/50 overflow-hidden">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Case #</TableHead>
-                      <TableHead className="hidden sm:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</TableHead>
-                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Dentist</TableHead>
-                      <TableHead className="hidden md:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Patient</TableHead>
-                      <TableHead className="hidden md:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Work Type</TableHead>
-                      <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</TableHead>
-                      <TableHead className="hidden sm:table-cell text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</TableHead>
-                      <TableHead className="text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</TableHead>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Case #</TableHead>
+                      <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</TableHead>
+                      <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dentist</TableHead>
+                      <TableHead className="hidden md:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Patient</TableHead>
+                      <TableHead className="hidden md:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Work Type</TableHead>
+                      <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</TableHead>
+                      <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Priority</TableHead>
+                      <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {cases.map((c) => (
-                      <TableRow key={c.id} className="hover:bg-sky-50/30 transition-colors duration-150">
+                    {cases.map((c, index) => (
+                      <motion.tr
+                        key={c.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: index * 0.03 }}
+                        className="border-b border-border/50 hover:bg-accent/50 transition-colors duration-150"
+                      >
                         <TableCell>
-                          <Link href={`/cases/${c.id}`} className="text-sky-600 hover:text-sky-700 font-semibold text-sm">
+                          <Link href={`/cases/${c.id}`} className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold text-sm transition-colors">
                             {c.caseNumber}
                           </Link>
                         </TableCell>
-                        <TableCell className="hidden sm:table-cell text-sm text-slate-500">
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                           {formatDate(c.date)}
                         </TableCell>
                         <TableCell>
                           {c.dentist?.id ? (
-                            <Link href={`/dentists/${c.dentist.id}`} className="text-slate-600 hover:text-sky-600 text-sm transition-colors">
+                            <Link href={`/dentists/${c.dentist.id}`} className="text-foreground/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm transition-colors">
                               {c.dentist.name}
                             </Link>
-                          ) : <span className="text-slate-400">{c.dentist?.name || "-"}</span>}
+                          ) : <span className="text-muted-foreground">{c.dentist?.name || "-"}</span>}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
                           {c.patient?.id ? (
-                            <Link href={`/patients/${c.patient.id}`} className="text-slate-600 hover:text-sky-600 text-sm transition-colors">
+                            <Link href={`/patients/${c.patient.id}`} className="text-foreground/80 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm transition-colors">
                               {c.patient.name}
                             </Link>
-                          ) : <span className="text-slate-400">-</span>}
+                          ) : <span className="text-muted-foreground">-</span>}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm text-slate-600">{c.workType}</TableCell>
+                        <TableCell className="hidden md:table-cell text-sm text-foreground/80">{c.workType}</TableCell>
                         <TableCell>
-                          <Badge className={`${getStatusColor(c.status)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">{c.status}</Badge>
+                          <Badge className={`${getStatusColor(c.status)} text-[11px] font-medium rounded-full px-2.5 py-0.5 inline-flex items-center gap-1.5`} variant="secondary">
+                            <span className={`w-1.5 h-1.5 rounded-full ${getStatusDot(c.status)}`} />
+                            {c.status}
+                          </Badge>
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">
                           <Badge className={`${getPriorityColor(c.priority)} text-[11px] font-medium rounded-full px-2.5 py-0.5`} variant="secondary">{c.priority}</Badge>
                         </TableCell>
-                        <TableCell className="text-right font-semibold text-sm text-slate-700">{formatCurrency(c.amount)}</TableCell>
+                        <TableCell className="text-right font-semibold text-sm text-foreground">{formatCurrency(c.amount)}</TableCell>
                         <TableCell>
                           {(c.dentist?.whatsapp || c.dentist?.phone) && (
                             <a
@@ -158,32 +201,23 @@ export default function CasesPage() {
                               )}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-[#25D366]/10 text-[#25D366] transition-colors"
+                              className="inline-flex items-center justify-center h-8 w-8 rounded-lg hover:bg-[#25D366]/10 text-[#25D366] transition-colors"
                               title="Notify dentist via WhatsApp"
                             >
                               <MessageCircle className="h-4 w-4" />
                             </a>
                           )}
                         </TableCell>
-                      </TableRow>
+                      </motion.tr>
                     ))}
-                    {cases.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-12">
-                          <FolderOpen className="h-10 w-10 mx-auto text-slate-300 mb-3" />
-                          <p className="font-medium text-slate-500">No cases found</p>
-                          <p className="text-sm text-slate-400 mt-1">Try adjusting your search or filters</p>
-                        </TableCell>
-                      </TableRow>
-                    )}
                   </TableBody>
                 </Table>
               </div>
 
               {pagination.totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-border/50">
                   <p className="text-sm text-muted-foreground">
-                    Showing <span className="font-medium text-slate-700">{cases.length}</span> of <span className="font-medium text-slate-700">{pagination.total}</span> cases
+                    Showing <span className="font-medium text-foreground">{cases.length}</span> of <span className="font-medium text-foreground">{pagination.total}</span> cases
                   </p>
                   <div className="flex gap-2">
                     <Button
@@ -191,7 +225,7 @@ export default function CasesPage() {
                       size="sm"
                       disabled={pagination.page <= 1}
                       onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                      className="rounded-lg"
+                      className="rounded-xl"
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
                       Previous
@@ -201,7 +235,7 @@ export default function CasesPage() {
                       size="sm"
                       disabled={pagination.page >= pagination.totalPages}
                       onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                      className="rounded-lg"
+                      className="rounded-xl"
                     >
                       Next
                       <ChevronRight className="h-4 w-4 ml-1" />
@@ -211,8 +245,8 @@ export default function CasesPage() {
               )}
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </GlassCard>
     </div>
   );
 }
