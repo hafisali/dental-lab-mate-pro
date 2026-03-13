@@ -117,7 +117,13 @@ export default function CasesPage() {
                       <TableCell className="hidden sm:table-cell text-muted-foreground">
                         {formatDate(c.date)}
                       </TableCell>
-                      <TableCell>{c.dentist?.name}</TableCell>
+                      <TableCell>
+                        {c.dentist?.id ? (
+                          <Link href={`/dentists/${c.dentist.id}`} className="text-sky-600 hover:underline">
+                            {c.dentist.name}
+                          </Link>
+                        ) : c.dentist?.name || "-"}
+                      </TableCell>
                       <TableCell className="hidden md:table-cell">{c.patient?.name || "-"}</TableCell>
                       <TableCell className="hidden md:table-cell">{c.workType}</TableCell>
                       <TableCell>

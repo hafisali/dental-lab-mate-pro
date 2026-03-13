@@ -184,7 +184,9 @@ export default function CaseDetailPage() {
                 <Stethoscope className="h-5 w-5" />
               </div>
               <div>
-                <p className="font-medium">{caseData.dentist?.name}</p>
+                <Link href={`/dentists/${caseData.dentist?.id}`} className="font-medium text-sky-600 hover:underline">
+                  {caseData.dentist?.name}
+                </Link>
                 <p className="text-sm text-muted-foreground">{caseData.dentist?.clinicName || ""}</p>
                 <p className="text-sm text-muted-foreground">{caseData.dentist?.phone || ""}</p>
               </div>

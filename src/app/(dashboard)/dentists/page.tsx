@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Search, Phone, Building2, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -100,7 +101,11 @@ export default function DentistsPage() {
               <TableBody>
                 {dentists.map((d) => (
                   <TableRow key={d.id}>
-                    <TableCell className="font-medium">{d.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link href={`/dentists/${d.id}`} className="text-sky-600 hover:underline">
+                        {d.name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <span className="flex items-center gap-1 text-muted-foreground">
                         <Building2 className="h-3.5 w-3.5" />{d.clinicName || "-"}

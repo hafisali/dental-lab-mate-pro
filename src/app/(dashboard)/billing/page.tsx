@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Receipt, CreditCard, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -135,7 +136,13 @@ export default function BillingPage() {
                       <TableRow key={inv.id}>
                         <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground">{formatDate(inv.createdAt)}</TableCell>
-                        <TableCell>{inv.dentist?.name}</TableCell>
+                        <TableCell>
+                          {inv.dentist?.id ? (
+                            <Link href={`/dentists/${inv.dentist.id}`} className="text-sky-600 hover:underline">
+                              {inv.dentist.name}
+                            </Link>
+                          ) : inv.dentist?.name || "-"}
+                        </TableCell>
                         <TableCell className="hidden md:table-cell">{inv.case?.caseNumber || "-"}</TableCell>
                         <TableCell><Badge className={getStatusColor(inv.status)} variant="secondary">{inv.status}</Badge></TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
@@ -168,7 +175,13 @@ export default function BillingPage() {
                   {payments.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="text-muted-foreground">{formatDate(p.date)}</TableCell>
-                      <TableCell>{p.dentist?.name}</TableCell>
+                      <TableCell>
+                        {p.dentist?.id ? (
+                          <Link href={`/dentists/${p.dentist.id}`} className="text-sky-600 hover:underline">
+                            {p.dentist.name}
+                          </Link>
+                        ) : p.dentist?.name || "-"}
+                      </TableCell>
                       <TableCell><Badge variant="secondary">{p.method}</Badge></TableCell>
                       <TableCell className="hidden sm:table-cell">{p.reference || "-"}</TableCell>
                       <TableCell className="text-right font-medium text-green-600">{formatCurrency(p.amount)}</TableCell>
@@ -198,7 +211,11 @@ export default function BillingPage() {
                 <TableBody>
                   {dentists.map((d) => (
                     <TableRow key={d.id}>
-                      <TableCell className="font-medium">{d.name}</TableCell>
+                      <TableCell className="font-medium">
+                        <Link href={`/dentists/${d.id}`} className="text-sky-600 hover:underline">
+                          {d.name}
+                        </Link>
+                      </TableCell>
                       <TableCell className="hidden sm:table-cell text-muted-foreground">{d.clinicName || "-"}</TableCell>
                       <TableCell className="text-center"><Badge variant="secondary">{d._count?.cases || 0}</Badge></TableCell>
                       <TableCell className="text-right">

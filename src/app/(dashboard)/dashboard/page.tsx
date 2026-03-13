@@ -255,7 +255,13 @@ export default function DashboardPage() {
                       {c.caseNumber}
                     </Link>
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">{c.dentist?.name}</TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {c.dentist?.id ? (
+                      <Link href={`/dentists/${c.dentist.id}`} className="text-sky-600 hover:underline">
+                        {c.dentist.name}
+                      </Link>
+                    ) : c.dentist?.name || "-"}
+                  </TableCell>
                   <TableCell className="hidden md:table-cell">{c.workType}</TableCell>
                   <TableCell>
                     <Badge className={getStatusColor(c.status)} variant="secondary">
