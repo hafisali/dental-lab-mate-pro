@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Loader2 } from "lucide-react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 
 export default function PatientsPage() {
@@ -93,10 +94,20 @@ export default function PatientsPage() {
               <TableBody>
                 {patients.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link href={`/patients/${p.id}`} className="text-sky-600 hover:underline">
+                        {p.name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="hidden sm:table-cell">{p.age || "-"}</TableCell>
                     <TableCell className="hidden sm:table-cell">{p.gender || "-"}</TableCell>
-                    <TableCell>{p.dentist?.name || "-"}</TableCell>
+                    <TableCell>
+                      {p.dentist?.id ? (
+                        <Link href={`/dentists/${p.dentist.id}`} className="text-sky-600 hover:underline">
+                          {p.dentist.name}
+                        </Link>
+                      ) : "-"}
+                    </TableCell>
                     <TableCell className="text-center"><Badge variant="secondary">{p._count?.cases || 0}</Badge></TableCell>
                   </TableRow>
                 ))}

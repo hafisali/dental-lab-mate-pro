@@ -124,7 +124,13 @@ export default function CasesPage() {
                           </Link>
                         ) : c.dentist?.name || "-"}
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">{c.patient?.name || "-"}</TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {c.patient?.id ? (
+                          <Link href={`/patients/${c.patient.id}`} className="text-sky-600 hover:underline">
+                            {c.patient.name}
+                          </Link>
+                        ) : "-"}
+                      </TableCell>
                       <TableCell className="hidden md:table-cell">{c.workType}</TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(c.status)} variant="secondary">{c.status}</Badge>

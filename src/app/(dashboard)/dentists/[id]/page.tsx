@@ -200,7 +200,11 @@ export default function DentistDetailPage() {
                           {formatDate(c.date || c.createdAt)}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          {c.patient?.name || "-"}
+                          {c.patient?.id ? (
+                            <Link href={`/patients/${c.patient.id}`} className="text-sky-600 hover:underline">
+                              {c.patient.name}
+                            </Link>
+                          ) : "-"}
                         </TableCell>
                         <TableCell>{c.workType || "-"}</TableCell>
                         <TableCell>
@@ -234,7 +238,11 @@ export default function DentistDetailPage() {
                   <TableBody>
                     {dentist.patients.map((p: any) => (
                       <TableRow key={p.id}>
-                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <Link href={`/patients/${p.id}`} className="text-sky-600 hover:underline">
+                            {p.name}
+                          </Link>
+                        </TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground">
                           {p.phone || "-"}
                         </TableCell>

@@ -199,7 +199,9 @@ export default function CaseDetailPage() {
                     <User className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="font-medium">{caseData.patient.name}</p>
+                    <Link href={`/patients/${caseData.patient.id}`} className="font-medium text-sky-600 hover:underline">
+                      {caseData.patient.name}
+                    </Link>
                     <p className="text-sm text-muted-foreground">
                       {caseData.patient.age ? `${caseData.patient.age} yrs` : ""}{" "}
                       {caseData.patient.gender || ""}

@@ -134,7 +134,7 @@ export default function BillingPage() {
                   <TableBody>
                     {invoices.map((inv) => (
                       <TableRow key={inv.id}>
-                        <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
+                        <TableCell className="font-medium text-sky-600">{inv.invoiceNumber}</TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground">{formatDate(inv.createdAt)}</TableCell>
                         <TableCell>
                           {inv.dentist?.id ? (
@@ -143,7 +143,13 @@ export default function BillingPage() {
                             </Link>
                           ) : inv.dentist?.name || "-"}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell">{inv.case?.caseNumber || "-"}</TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {inv.case?.id ? (
+                            <Link href={`/cases/${inv.case.id}`} className="text-sky-600 hover:underline">
+                              {inv.case.caseNumber}
+                            </Link>
+                          ) : "-"}
+                        </TableCell>
                         <TableCell><Badge className={getStatusColor(inv.status)} variant="secondary">{inv.status}</Badge></TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
                       </TableRow>
