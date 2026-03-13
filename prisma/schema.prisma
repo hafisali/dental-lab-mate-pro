@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  LAB_OWNER
+  RECEPTION
+  TECHNICIAN
+  DENTIST
+}
+
+enum CaseStatus {
+  RECEIVED
+  WORKING
+  TRIAL
+  FINISHED
+  DELIVERED
+}
+
+enum CasePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK
+  ONLINE
+  CHEQUE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String
+  name          String
+  role          Role           @default(RECEPTION)
+  phone         String?
+  avatar        String?
+  active        Boolean        @default(true)
+  labId         String?
+  lab           Lab?           @relation(fields: [labId], references: [id])
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([labId])
+  @@index([email])
+}
+
+model Lab {
+  id        String          @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  logo      String?
+  currency  String          @default("INR")
+  taxRate   Float           @default(0)
+  users     User[]
+  branches  Branch[]
+  dentists  Dentist[]
+  patients  Patient[]
+  cases     Case[]
+  invoices  Invoice[]
+  inventory InventoryItem[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  labId     String
+  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  cases     Case[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([labId])
+}
+
+model Dentist {
+  id         String    @id @default(cuid())
+  name       String
+  clinicName String?
+  phone      String?
+  whatsapp   String?
+  email      String?
+  address    String?
+  balance    Float     @default(0)
+  notes      String?
+  active     Boolean   @default(true)
+  labId      String
+  lab        Lab       @relation(fields: [labId], references: [id], onDelete: Cascade)
+  patients   Patient[]
+  cases      Case[]
+  invoices   Invoice[]
+  payments   Payment[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([labId])
+  @@index([name])
+}
+
+model Patient {
+  id        String   @id @default(cuid())
+  name      String
+  age       Int?
+  gender    String?
+  phone     String?
+  notes     String?
+  dentistId String
+  dentist   Dentist  @relation(fields: [dentistId], references: [id], onDelete: Cascade)
+  labId     String
+  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  cases     Case[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dentistId])
+  @@index([labId])
+  @@index([name])
+}
+
+model Case {
+  id           String           @id @default(cuid())
+  caseNumber   String           @unique
+  date         DateTime         @default(now())
+  dentistId    String
+  dentist      Dentist          @relation(fields: [dentistId], references: [id])
+  patientId    String?
+  patient      Patient?         @relation(fields: [patientId], references: [id])
+  teethNumbers Int[]
+  workType     String
+  shade        String?
+  material     String?
+  technicianId String?
+  dueDate      DateTime?
+  priority     CasePriority     @default(NORMAL)
+  status       CaseStatus       @default(RECEIVED)
+  amount       Float            @default(0)
+  remarks      String?
+  labId        String
+  lab          Lab              @relation(fields: [labId], references: [id], onDelete: Cascade)
+  branchId     String?
+  branch       Branch?          @relation(fields: [branchId], references: [id])
+  files        CaseFile[]
+  invoices     Invoice[]
+  usages       InventoryUsage[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([labId])
+  @@index([dentistId])
+  @@index([status])
+  @@index([caseNumber])
+  @@index([technicianId])
+  @@index([date])
+}
+
+model CaseFile {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  fileName  String
+  fileType  String
+  filePath  String
+  fileSize  Int
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  caseId        String?
+  case          Case?         @relation(fields: [caseId], references: [id])
+  dentistId     String
+  dentist       Dentist       @relation(fields: [dentistId], references: [id])
+  amount        Float
+  discount      Float         @default(0)
+  tax           Float         @default(0)
+  total         Float
+  status        InvoiceStatus @default(DRAFT)
+  notes         String?
+  labId         String
+  lab           Lab           @relation(fields: [labId], references: [id], onDelete: Cascade)
+  payments      Payment[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([labId])
+  @@index([dentistId])
+  @@index([status])
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  invoiceId String?
+  invoice   Invoice?      @relation(fields: [invoiceId], references: [id])
+  dentistId String
+  dentist   Dentist       @relation(fields: [dentistId], references: [id])
+  amount    Float
+  method    PaymentMethod @default(CASH)
+  reference String?
+  notes     String?
+  date      DateTime      @default(now())
+  createdAt DateTime      @default(now())
+
+  @@index([dentistId])
+  @@index([invoiceId])
+}
+
+model InventoryItem {
+  id          String           @id @default(cuid())
+  name        String
+  category    String?
+  stock       Float            @default(0)
+  unit        String           @default("pcs")
+  costPerUnit Float            @default(0)
+  minStock    Float            @default(5)
+  labId       String
+  lab         Lab              @relation(fields: [labId], references: [id], onDelete: Cascade)
+  usages      InventoryUsage[]
+  purchases   PurchaseEntry[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([labId])
+  @@index([name])
+}
+
+model InventoryUsage {
+  id       String        @id @default(cuid())
+  itemId   String
+  item     InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  caseId   String?
+  case     Case?         @relation(fields: [caseId], references: [id])
+  quantity Float
+  date     DateTime      @default(now())
+
+  @@index([itemId])
+  @@index([caseId])
+}
+
+model PurchaseEntry {
+  id          String        @id @default(cuid())
+  itemId      String
+  item        InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  quantity    Float
+  costPerUnit Float
+  totalCost   Float
+  supplier    String?
+  notes       String?
+  date        DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+
+  @@index([itemId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("info")
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
