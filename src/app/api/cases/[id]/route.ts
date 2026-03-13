@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: updateData,
       include: {
-        dentist: { select: { id: true, name: true, clinicName: true } },
+        dentist: { select: { id: true, name: true, clinicName: true, phone: true, whatsapp: true } },
         patient: { select: { id: true, name: true } },
         files: true,
       },

@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
         skip,
         take: limit,
         include: {
-          dentist: { select: { id: true, name: true, clinicName: true } },
+          dentist: { select: { id: true, name: true, clinicName: true, phone: true, whatsapp: true } },
           patient: { select: { id: true, name: true } },
           files: { select: { id: true, fileName: true, fileType: true, filePath: true, fileSize: true } },
         },

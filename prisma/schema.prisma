@@ -116,6 +116,7 @@ model Lab {
   cases     Case[]
   invoices  Invoice[]
   inventory InventoryItem[]
+  expenses  Expense[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 }
@@ -313,6 +314,23 @@ model PurchaseEntry {
   createdAt   DateTime      @default(now())
 
   @@index([itemId])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  description String
+  amount      Float
+  category    String
+  date        DateTime @default(now())
+  notes       String?
+  labId       String
+  lab         Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([labId])
+  @@index([date])
+  @@index([category])
 }
 
 model Notification {

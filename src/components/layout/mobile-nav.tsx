@@ -23,8 +23,8 @@ export default function MobileNav() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-card lg:hidden">
-      <div className="flex items-center justify-around h-16">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-white/95 backdrop-blur-md lg:hidden shadow-[0_-2px_10px_rgba(0,0,0,0.06)]">
+      <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
         {items.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
@@ -32,11 +32,18 @@ export default function MobileNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-1 px-3 py-2 text-xs transition-colors",
-                isActive ? "text-primary" : "text-muted-foreground"
+                "flex flex-col items-center gap-0.5 px-3 py-2 text-[11px] font-medium transition-all duration-200 rounded-lg",
+                isActive
+                  ? "text-sky-600"
+                  : "text-slate-400 hover:text-slate-600"
               )}
             >
-              <item.icon className="h-5 w-5" />
+              <div className={cn(
+                "p-1 rounded-lg transition-all duration-200",
+                isActive && "bg-sky-50"
+              )}>
+                <item.icon className={cn("h-5 w-5", isActive && "text-sky-600")} />
+              </div>
               <span>{item.label}</span>
             </Link>
           );
