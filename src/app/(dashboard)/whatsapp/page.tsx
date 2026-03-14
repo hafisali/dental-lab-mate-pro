@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,14 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   MessageCircle,
   Send,
   Search,
@@ -31,6 +24,9 @@ import {
   Clock,
   ExternalLink,
   Loader2,
+  Phone,
+  CheckCheck,
+  ArrowRight,
 } from "lucide-react";
 import { getWhatsAppUrl, messageTemplates } from "@/lib/whatsapp";
 import { formatDateTime, formatCurrency, getInitials, getRelativeTime } from "@/lib/utils";
@@ -66,11 +62,11 @@ type LogEntry = {
 };
 
 const TEMPLATE_OPTIONS = [
-  { value: "caseReceived", label: "Case Received" },
-  { value: "caseReady", label: "Case Ready" },
-  { value: "statusUpdate", label: "Status Update" },
-  { value: "paymentReminder", label: "Payment Reminder" },
-  { value: "custom", label: "Custom Message" },
+  { value: "caseReceived", label: "Case Received", icon: "📥" },
+  { value: "caseReady", label: "Case Ready", icon: "✅" },
+  { value: "statusUpdate", label: "Status Update", icon: "📊" },
+  { value: "paymentReminder", label: "Payment Reminder", icon: "💰" },
+  { value: "custom", label: "Custom Message", icon: "✏️" },
 ];
 
 const TEMPLATES_NEEDING_CASE = ["caseReceived", "caseReady", "statusUpdate"];
@@ -327,73 +323,170 @@ export default function WhatsAppPage() {
   };
 
   return (
-    <div className="space-y-6 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
+    <div className="space-y-8 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
       <PageHeader title="WhatsApp" subtitle="Send messages to your dentists" />
 
-      {/* Two Column Layout */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Left: Quick Send */}
-        <div className="lg:col-span-3">
-          <GlassCard hover="none" delay={0.1}>
-            <div className="flex items-center gap-2 mb-5">
-              <Send className="h-4 w-4 text-[#25D366]" />
-              <h3 className="text-base font-semibold text-foreground">Quick Send</h3>
+      {/* Chat-like Layout */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* Left: Contact List / Quick Send */}
+        <div className="lg:col-span-5 xl:col-span-4 space-y-4">
+          {/* Dentist Selector Card */}
+          <GlassCard hover="none" delay={0.1} padding="p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-xl bg-[#25D366]/10 flex items-center justify-center">
+                <Send className="h-4 w-4 text-[#25D366]" />
+              </div>
+              <h3 className="text-sm font-bold text-foreground tracking-tight">Select Contact</h3>
             </div>
 
-            <div className="space-y-4">
-              {/* Dentist Selector */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-foreground">Select Dentist</Label>
-                <Select value={selectedDentistId} onValueChange={setSelectedDentistId}>
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue placeholder="Choose a dentist..." />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    {loadingDentists ? (
-                      <div className="flex items-center justify-center py-4">
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      </div>
-                    ) : (
-                      dentists.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                          {d.clinicName ? ` - ${d.clinicName}` : ""}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                {selectedDentist && (
-                  <p className="text-xs text-muted-foreground">
-                    Phone: {selectedDentist.whatsapp || selectedDentist.phone || "N/A"}
-                  </p>
+            <Select value={selectedDentistId} onValueChange={setSelectedDentistId}>
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder="Choose a dentist..." />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                {loadingDentists ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  </div>
+                ) : (
+                  dentists.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                      {d.clinicName ? ` - ${d.clinicName}` : ""}
+                    </SelectItem>
+                  ))
                 )}
-              </div>
+              </SelectContent>
+            </Select>
 
-              {/* Template Cards */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-foreground">Message Template</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {TEMPLATE_OPTIONS.map((t) => (
-                    <button
-                      key={t.value}
-                      onClick={() => setTemplate(t.value)}
-                      className={`px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all duration-200 border ${
-                        template === t.value
-                          ? "border-primary bg-primary/5 text-primary dark:bg-primary/10"
-                          : "border-border bg-card hover:bg-accent text-foreground"
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
+            {/* Selected dentist info */}
+            {selectedDentist && (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-3 p-3 rounded-xl bg-muted/50 border border-border/30"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#25D366] to-[#128C7E] flex items-center justify-center text-white text-sm font-bold">
+                    {getInitials(selectedDentist.name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{selectedDentist.name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Phone className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">{selectedDentist.whatsapp || selectedDentist.phone || "N/A"}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </motion.div>
+            )}
+          </GlassCard>
 
+          {/* Template Cards */}
+          <GlassCard hover="none" delay={0.15} padding="p-5">
+            <Label className="text-sm font-bold text-foreground">Message Template</Label>
+            <div className="grid grid-cols-1 gap-2 mt-3">
+              {TEMPLATE_OPTIONS.map((t) => (
+                <button
+                  key={t.value}
+                  onClick={() => setTemplate(t.value)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-left transition-all duration-200 border ${
+                    template === t.value
+                      ? "border-[#25D366] bg-[#25D366]/5 text-foreground ring-1 ring-[#25D366]/20"
+                      : "border-border/50 bg-card hover:bg-accent text-foreground"
+                  }`}
+                >
+                  <span className="text-base">{t.icon}</span>
+                  <span>{t.label}</span>
+                  {template === t.value && (
+                    <CheckCheck className="h-4 w-4 text-[#25D366] ml-auto" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </GlassCard>
+
+          {/* Recent Messages Timeline */}
+          <GlassCard hover="none" delay={0.25} padding="p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <Clock className="h-4 w-4 text-[#25D366]" />
+              <h3 className="text-sm font-bold text-foreground tracking-tight">Recent Messages</h3>
+            </div>
+
+            {loadingLogs ? (
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <Skeleton className="h-2 w-2 rounded-full mt-2" />
+                    <div className="flex-1 space-y-1">
+                      <Skeleton className="h-3 w-[150px]" />
+                      <Skeleton className="h-3 w-[200px]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : recentLogs.length === 0 ? (
+              <div className="text-center py-6">
+                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mx-auto mb-2">
+                  <MessageCircle className="h-5 w-5 text-muted-foreground/60" />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">No messages yet</p>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1">
+                {recentLogs.slice(0, 8).map((log, index) => (
+                  <motion.div
+                    key={log.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2, delay: index * 0.03 }}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-accent/50 transition-colors"
+                  >
+                    <div className="mt-1.5 shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-[#25D366]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-foreground truncate">{log.title}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{log.message}</p>
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5 font-medium">
+                        {getRelativeTime(log.createdAt)}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </GlassCard>
+        </div>
+
+        {/* Right: Message Composer */}
+        <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+          <GlassCard hover="none" delay={0.2} padding="p-0">
+            {/* Chat header */}
+            <div className="px-6 py-4 border-b border-border/50 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#25D366] to-[#128C7E] flex items-center justify-center text-white text-sm font-bold">
+                {selectedDentist ? getInitials(selectedDentist.name) : "?"}
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">
+                  {selectedDentist?.name || "Select a contact"}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {selectedDentist ? (selectedDentist.whatsapp || selectedDentist.phone || "No phone") : "Choose a dentist to start messaging"}
+                </p>
+              </div>
+            </div>
+
+            {/* Message area */}
+            <div className="p-6 min-h-[400px] flex flex-col">
               {/* Case Selector (shown only when needed) */}
               {template && TEMPLATES_NEEDING_CASE.includes(template) && selectedDentistId && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-foreground">Select Case</Label>
+                <motion.div
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-5"
+                >
+                  <Label className="text-sm font-medium text-foreground mb-2 block">Select Case</Label>
                   <Select value={selectedCaseId} onValueChange={setSelectedCaseId}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder="Choose a case..." />
@@ -417,13 +510,17 @@ export default function WhatsAppPage() {
                       )}
                     </SelectContent>
                   </Select>
-                </div>
+                </motion.div>
               )}
 
               {/* Custom Message Input */}
               {template === "custom" && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-foreground">Your Message</Label>
+                <motion.div
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-5"
+                >
+                  <Label className="text-sm font-medium text-foreground mb-2 block">Your Message</Label>
                   <Textarea
                     placeholder="Type your custom message here..."
                     value={customMessage}
@@ -431,95 +528,63 @@ export default function WhatsAppPage() {
                     rows={3}
                     className="rounded-xl"
                   />
-                </div>
+                </motion.div>
               )}
 
-              {/* Message Preview - Chat Bubble */}
-              {messagePreview && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-foreground">Message Preview</Label>
-                  <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 p-4 border border-emerald-100 dark:border-emerald-900/50">
-                    <Textarea
-                      value={messagePreview}
-                      onChange={(e) => setMessagePreview(e.target.value)}
-                      rows={6}
-                      className="bg-transparent border-0 p-0 text-sm font-mono text-foreground resize-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                    />
+              {/* Message Preview - Chat Bubble Style */}
+              <div className="flex-1 flex flex-col justify-end">
+                {messagePreview ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="space-y-3"
+                  >
+                    <p className="text-xs text-muted-foreground font-medium">Message Preview</p>
+                    {/* Chat bubble */}
+                    <div className="max-w-[90%] ml-auto">
+                      <div className="rounded-2xl rounded-br-md bg-[#DCF8C6] dark:bg-[#025C4C] p-4 shadow-sm border border-[#B7E9A0]/50 dark:border-[#025C4C]/50">
+                        <Textarea
+                          value={messagePreview}
+                          onChange={(e) => setMessagePreview(e.target.value)}
+                          rows={6}
+                          className="bg-transparent border-0 p-0 text-sm text-foreground resize-none focus-visible:ring-0 focus-visible:ring-offset-0 font-mono leading-relaxed"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-end mt-1.5">
+                        <span className="text-[10px] text-muted-foreground">Draft</span>
+                        <CheckCheck className="h-3 w-3 text-muted-foreground/50" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      You can edit the message before sending
+                    </p>
+                  </motion.div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-2xl bg-[#25D366]/10 flex items-center justify-center mx-auto mb-3">
+                        <MessageCircle className="h-8 w-8 text-[#25D366]/60" />
+                      </div>
+                      <p className="text-sm font-medium text-muted-foreground">Select a contact and template</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Your message preview will appear here</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    You can edit the message before sending
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
+            </div>
 
-              {/* Send Button */}
+            {/* Send bar */}
+            <div className="px-6 py-4 border-t border-border/50 bg-muted/20">
               <Button
                 onClick={handleOpenWhatsApp}
                 disabled={!selectedDentist || !messagePreview || messagePreview.startsWith("Select") || messagePreview.startsWith("Type")}
-                className="bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl shadow-md shadow-green-500/20 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
+                className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl shadow-md shadow-green-500/20 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 h-11 font-semibold"
               >
                 <MessageCircle className="h-4 w-4 mr-2" />
                 Open in WhatsApp
-                <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                <ExternalLink className="h-3.5 w-3.5 ml-2 opacity-60" />
               </Button>
             </div>
-          </GlassCard>
-        </div>
-
-        {/* Right: Recent Messages */}
-        <div className="lg:col-span-2">
-          <GlassCard hover="none" delay={0.2}>
-            <div className="flex items-center gap-2 mb-5">
-              <Clock className="h-4 w-4 text-[#25D366]" />
-              <h3 className="text-base font-semibold text-foreground">Recent Messages</h3>
-            </div>
-
-            {loadingLogs ? (
-              <div className="space-y-4">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <Skeleton className="h-2 w-2 rounded-full mt-2" />
-                    <div className="flex-1 space-y-1">
-                      <Skeleton className="h-3 w-[150px]" />
-                      <Skeleton className="h-3 w-[200px]" />
-                      <Skeleton className="h-3 w-[80px]" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : recentLogs.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
-                  <MessageCircle className="h-6 w-6 text-muted-foreground/60" />
-                </div>
-                <p className="text-sm font-medium text-foreground">No messages yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Messages will appear here after sending</p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {recentLogs.map((log, index) => (
-                  <motion.div
-                    key={log.id}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.05 }}
-                    className="flex items-start gap-3 p-3 rounded-xl hover:bg-accent/50 transition-colors"
-                  >
-                    {/* Green timeline dot */}
-                    <div className="mt-1.5 shrink-0">
-                      <div className="w-2 h-2 rounded-full bg-[#25D366]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{log.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{log.message}</p>
-                      <p className="text-xs text-muted-foreground/70 mt-1 font-medium">
-                        {getRelativeTime(log.createdAt)}
-                      </p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
           </GlassCard>
         </div>
       </div>
@@ -527,9 +592,14 @@ export default function WhatsAppPage() {
       {/* Bulk Messaging Section */}
       <GlassCard padding="p-0" hover="none" delay={0.3}>
         <div className="p-6 border-b border-border/50">
-          <div className="flex items-center gap-2 mb-4">
-            <Users className="h-4 w-4 text-[#25D366]" />
-            <h3 className="text-base font-semibold text-foreground">Bulk Messaging</h3>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-9 h-9 rounded-xl bg-[#25D366]/10 flex items-center justify-center">
+              <Users className="h-4 w-4 text-[#25D366]" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-foreground tracking-tight">Bulk Messaging</h3>
+              <p className="text-sm text-muted-foreground">Send messages to multiple dentists at once</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -571,94 +641,84 @@ export default function WhatsAppPage() {
           </div>
 
           {bulkDentistIds.size > 0 && (
-            <p className="text-sm text-muted-foreground mt-3">
-              <span className="font-semibold text-foreground">{bulkDentistIds.size}</span> dentist{bulkDentistIds.size !== 1 ? "s" : ""} selected
-            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <Badge className="bg-[#25D366]/10 text-[#25D366] border border-[#25D366]/20 rounded-full px-3 py-1 text-xs font-bold">
+                {bulkDentistIds.size} selected
+              </Badge>
+            </div>
           )}
         </div>
 
-        {/* Dentist list with checkboxes */}
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border/50">
-                <TableHead className="w-12">
-                  <Checkbox
-                    checked={selectAll}
-                    onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
-                  />
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dentist</TableHead>
-                <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone</TableHead>
-                <TableHead className="hidden md:table-cell text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Balance</TableHead>
-                <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredDentists.map((d, index) => {
-                const initials = getInitials(d.name || "D");
-                return (
-                  <motion.tr
-                    key={d.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.03 }}
-                    className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+        {/* Dentist list */}
+        <div className="divide-y divide-border/30">
+          {/* Select all header */}
+          <div className="flex items-center gap-4 px-6 py-3 bg-muted/30">
+            <Checkbox
+              checked={selectAll}
+              onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+            />
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex-1">Dentist</span>
+            <span className="hidden sm:block text-xs font-bold text-muted-foreground uppercase tracking-wider w-32">Phone</span>
+            <span className="hidden md:block text-xs font-bold text-muted-foreground uppercase tracking-wider w-24 text-right">Balance</span>
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider w-20 text-right">Action</span>
+          </div>
+
+          {filteredDentists.map((d, index) => {
+            const initials = getInitials(d.name || "D");
+            return (
+              <motion.div
+                key={d.id}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, delay: index * 0.02 }}
+                className={`flex items-center gap-4 px-6 py-3.5 hover:bg-accent/30 transition-colors ${
+                  bulkDentistIds.has(d.id) ? "bg-[#25D366]/5" : ""
+                }`}
+              >
+                <Checkbox
+                  checked={bulkDentistIds.has(d.id)}
+                  onCheckedChange={() => toggleBulkDentist(d.id)}
+                />
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{d.name}</p>
+                    {d.clinicName && (
+                      <p className="text-xs text-muted-foreground truncate">{d.clinicName}</p>
+                    )}
+                  </div>
+                </div>
+                <span className="hidden sm:block text-sm text-muted-foreground w-32 truncate">
+                  {d.whatsapp || d.phone || "-"}
+                </span>
+                <span className={`hidden md:block text-sm font-semibold w-24 text-right ${d.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                  {formatCurrency(d.balance)}
+                </span>
+                <div className="w-20 text-right">
+                  <Button
+                    size="sm"
+                    onClick={() => handleBulkSend(d)}
+                    disabled={!bulkTemplate}
+                    className="bg-[#25D366] hover:bg-[#128C7E] text-white h-8 rounded-xl text-xs"
                   >
-                    <TableCell>
-                      <Checkbox
-                        checked={bulkDentistIds.has(d.id)}
-                        onCheckedChange={() => toggleBulkDentist(d.id)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {initials}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm text-foreground">{d.name}</p>
-                          {d.clinicName && (
-                            <p className="text-xs text-muted-foreground">{d.clinicName}</p>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                      {d.whatsapp || d.phone || "-"}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-right">
-                      <span className={`text-sm font-semibold ${d.balance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                        {formatCurrency(d.balance)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        onClick={() => handleBulkSend(d)}
-                        disabled={!bulkTemplate}
-                        className="bg-[#25D366] hover:bg-[#128C7E] text-white h-8 rounded-xl text-xs"
-                      >
-                        <MessageCircle className="h-3.5 w-3.5 mr-1" />
-                        Send
-                      </Button>
-                    </TableCell>
-                  </motion.tr>
-                );
-              })}
-              {filteredDentists.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5}>
-                    <EmptyState
-                      icon={Users}
-                      title="No dentists found"
-                      description="No dentists found with phone numbers."
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                    <MessageCircle className="h-3.5 w-3.5 mr-1" />
+                    Send
+                  </Button>
+                </div>
+              </motion.div>
+            );
+          })}
+          {filteredDentists.length === 0 && (
+            <div className="py-12">
+              <EmptyState
+                icon={Users}
+                title="No dentists found"
+                description="No dentists found with phone numbers."
+              />
+            </div>
+          )}
         </div>
       </GlassCard>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/stat-card";
@@ -13,7 +13,7 @@ import { BarChart } from "@/components/charts/bar-chart";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertTriangle, Clock, TrendingUp, Users, CheckCircle2,
-  Target, Activity, Trophy, Medal,
+  Target, Activity, Trophy, Zap, ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency, formatDate, getStatusColor, statusChartColors } from "@/lib/utils";
@@ -31,6 +31,12 @@ interface AnalyticsData {
   casesThisMonth: number;
   revenueThisMonth: number;
 }
+
+const medalColors = [
+  "from-amber-400 to-yellow-500",
+  "from-slate-300 to-slate-400",
+  "from-amber-600 to-orange-700",
+];
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -68,68 +74,96 @@ export default function AnalyticsPage() {
   const workTypeData = (data?.workTypeCounts || []).slice(0, 6).map((item) => ({
     name: item.workType, count: item.count,
   }));
-  const maxDentistRevenue = Math.max(...(data?.topDentists || []).map(d => d.revenue), 1);
+  const maxTechCases = Math.max(...(data?.techWorkload || []).map(t => t.activeCases + t.completedCases), 1);
 
   return (
-    <div className="space-y-6 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
+    <div className="space-y-8 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
       <PageHeader title="Analytics" subtitle="Performance insights & delayed work tracking" />
 
-      {/* Overdue Alert */}
-      {data?.overdueCases && data.overdueCases.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50/80 dark:bg-red-950/30 p-5 animate-pulse-glow"
-        >
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 flex-shrink-0">
-              <AlertTriangle className="h-5 w-5" />
+      {/* Overdue Alert with pulse */}
+      <AnimatePresence>
+        {data?.overdueCases && data.overdueCases.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="relative rounded-2xl border border-red-200 dark:border-red-900/50 bg-gradient-to-r from-red-50/90 via-red-50/70 to-rose-50/90 dark:from-red-950/40 dark:via-red-950/30 dark:to-rose-950/40 p-6 overflow-hidden"
+          >
+            {/* Pulse ring */}
+            <div className="absolute top-4 left-4 w-3 h-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-red-800 dark:text-red-300">{data.overdueCases.length} Overdue Case{data.overdueCases.length > 1 ? "s" : ""}</h3>
-              <div className="mt-2 space-y-1.5">
-                {data.overdueCases.slice(0, 3).map((c) => (
-                  <div key={c.id} className="flex items-center gap-2 text-sm">
-                    <Link href={`/cases/${c.id}`} className="text-red-700 dark:text-red-400 hover:underline font-medium">{c.caseNumber}</Link>
-                    <span className="text-red-600/70 dark:text-red-400/60">—</span>
-                    <span className="text-red-600/70 dark:text-red-400/60">{c.dentist?.name}</span>
-                    <Badge className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border-0 text-[10px] px-2 py-0 rounded-full">{c.daysOverdue}d overdue</Badge>
-                  </div>
-                ))}
+
+            <div className="flex items-start gap-4 ml-6">
+              <div className="p-3 rounded-2xl bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 flex-shrink-0 shadow-sm shadow-red-200/50">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-bold text-red-800 dark:text-red-300 tracking-tight">
+                  {data.overdueCases.length} Overdue Case{data.overdueCases.length > 1 ? "s" : ""}
+                </h3>
+                <p className="text-sm text-red-600/70 dark:text-red-400/60 mt-0.5">Immediate attention required</p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {data.overdueCases.slice(0, 3).map((c, i) => (
+                    <motion.div
+                      key={c.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                      className="flex items-center gap-3 p-3 rounded-xl bg-white/60 dark:bg-red-950/30 border border-red-100 dark:border-red-900/30"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/cases/${c.id}`} className="text-sm font-semibold text-red-700 dark:text-red-300 hover:underline">
+                          {c.caseNumber}
+                        </Link>
+                        <p className="text-xs text-red-600/60 dark:text-red-400/50 truncate">{c.dentist?.name}</p>
+                      </div>
+                      <Badge className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border-0 text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0">
+                        {c.daysOverdue}d late
+                      </Badge>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Due Soon Alert */}
-      {data?.dueSoonCases && data.dueSoonCases.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/80 dark:bg-amber-950/30 p-5"
-        >
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 flex-shrink-0">
-              <Clock className="h-5 w-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-amber-800 dark:text-amber-300">{data.dueSoonCases.length} Case{data.dueSoonCases.length > 1 ? "s" : ""} Due Soon</h3>
-              <div className="mt-2 space-y-1.5">
-                {data.dueSoonCases.slice(0, 3).map((c) => (
-                  <div key={c.id} className="flex items-center gap-2 text-sm">
-                    <Link href={`/cases/${c.id}`} className="text-amber-700 dark:text-amber-400 hover:underline font-medium">{c.caseNumber}</Link>
-                    <span className="text-amber-600/70">—</span>
-                    <span className="text-amber-600/70">{c.dentist?.name}</span>
-                    <Badge className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border-0 text-[10px] px-2 py-0 rounded-full">{c.dueLabel}</Badge>
-                  </div>
-                ))}
+      <AnimatePresence>
+        {data?.dueSoonCases && data.dueSoonCases.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-gradient-to-r from-amber-50/90 to-orange-50/90 dark:from-amber-950/30 dark:to-orange-950/30 p-5"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 flex-shrink-0">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-amber-800 dark:text-amber-300">{data.dueSoonCases.length} Case{data.dueSoonCases.length > 1 ? "s" : ""} Due Soon</h3>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {data.dueSoonCases.slice(0, 4).map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/cases/${c.id}`}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/60 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 text-sm hover:bg-white/80 dark:hover:bg-amber-950/50 transition-colors"
+                    >
+                      <span className="font-semibold text-amber-700 dark:text-amber-400">{c.caseNumber}</span>
+                      <span className="text-amber-500/60 dark:text-amber-500/40">|</span>
+                      <span className="text-xs text-amber-600/70 dark:text-amber-400/60">{c.dueLabel}</span>
+                    </Link>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -139,21 +173,40 @@ export default function AnalyticsPage() {
         <StatCard title="Revenue This Month" value={data?.revenueThisMonth ?? 0} icon={TrendingUp} color="violet" delay={0.25} format={formatCurrency} />
       </div>
 
+      {/* Revenue Trend - Full Width */}
+      <GlassCard delay={0.3}>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-foreground tracking-tight">Revenue Trend</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Monthly case volume over time</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+            <span>Cases</span>
+          </div>
+        </div>
+        {volumeData.length > 0 ? (
+          <AreaChart data={volumeData} xKey="month" yKey="cases" yLabel="Cases" color="#6366f1" height={280} />
+        ) : (
+          <div className="flex items-center justify-center h-60 text-muted-foreground text-sm">No data</div>
+        )}
+      </GlassCard>
+
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Status Distribution */}
-        <GlassCard delay={0.3}>
-          <h3 className="text-base font-semibold text-foreground mb-1">Case Status Distribution</h3>
-          <p className="text-sm text-muted-foreground mb-4">Current breakdown by status</p>
+        <GlassCard delay={0.35}>
+          <h3 className="text-base font-bold text-foreground tracking-tight mb-1">Status Distribution</h3>
+          <p className="text-sm text-muted-foreground mb-5">Current breakdown by status</p>
           {statusDonutData.length > 0 ? (
             <>
               <DonutChart data={statusDonutData} centerValue={totalCases} centerLabel="Total" height={220} />
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="mt-5 grid grid-cols-2 gap-3">
                 {statusDonutData.map((item) => (
-                  <div key={item.name} className="flex items-center gap-2 text-sm">
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-muted-foreground truncate">{item.name}</span>
-                    <span className="font-semibold text-foreground ml-auto">{item.value}</span>
+                  <div key={item.name} className="flex items-center gap-2.5 text-sm p-2 rounded-lg hover:bg-accent/50 transition-colors">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: item.color }} />
+                    <span className="text-muted-foreground truncate flex-1">{item.name}</span>
+                    <span className="font-bold text-foreground tabular-nums">{item.value}</span>
                   </div>
                 ))}
               </div>
@@ -163,136 +216,150 @@ export default function AnalyticsPage() {
           )}
         </GlassCard>
 
-        {/* Monthly Volumes */}
-        <GlassCard delay={0.35}>
-          <h3 className="text-base font-semibold text-foreground mb-1">Monthly Case Volume</h3>
-          <p className="text-sm text-muted-foreground mb-4">Cases received per month</p>
-          {volumeData.length > 0 ? (
-            <AreaChart data={volumeData} xKey="month" yKey="cases" yLabel="Cases" color="#6366f1" height={300} />
+        {/* Work Type Distribution */}
+        <GlassCard delay={0.4}>
+          <h3 className="text-base font-bold text-foreground tracking-tight mb-1">Work Type Breakdown</h3>
+          <p className="text-sm text-muted-foreground mb-5">Most common work types</p>
+          {workTypeData.length > 0 ? (
+            <BarChart
+              data={workTypeData}
+              xKey="name"
+              bars={[{ key: "count", color: "#6366f1", name: "Cases" }]}
+              height={300}
+              layout="vertical"
+            />
           ) : (
             <div className="flex items-center justify-center h-60 text-muted-foreground text-sm">No data</div>
           )}
         </GlassCard>
       </div>
 
-      {/* Work Type Distribution */}
-      {workTypeData.length > 0 && (
-        <GlassCard delay={0.4}>
-          <h3 className="text-base font-semibold text-foreground mb-1">Work Type Distribution</h3>
-          <p className="text-sm text-muted-foreground mb-4">Most common work types</p>
-          <BarChart
-            data={workTypeData}
-            xKey="name"
-            bars={[{ key: "count", color: "#6366f1", name: "Cases" }]}
-            height={250}
-            layout="vertical"
-          />
-        </GlassCard>
-      )}
-
-      {/* Tables Row */}
+      {/* Leaderboard & Workload */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Top Dentists */}
+        {/* Top Dentists Leaderboard */}
         <GlassCard delay={0.45} padding="p-0">
-          <div className="p-6 pb-4">
-            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-amber-500" />
-              Top Dentists
-            </h3>
-            <p className="text-sm text-muted-foreground mt-0.5">By case count & revenue</p>
+          <div className="p-6 pb-2">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/50">
+                <Trophy className="h-5 w-5 text-amber-500" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground tracking-tight">Top Dentists</h3>
+                <p className="text-sm text-muted-foreground">Leaderboard by revenue</p>
+              </div>
+            </div>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border/50">
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pl-6">#</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dentist</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Cases</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right pr-6">Revenue</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <div className="px-6 pb-6">
+            <div className="space-y-2">
               {(data?.topDentists || []).slice(0, 5).map((dentist, index) => (
-                <motion.tr
+                <motion.div
                   key={dentist.id}
-                  initial={{ opacity: 0, x: -10 }}
+                  initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 + index * 0.05 }}
-                  className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                  transition={{ delay: 0.5 + index * 0.08 }}
+                  className="flex items-center gap-4 p-3 rounded-xl hover:bg-accent/50 transition-all duration-200 group"
                 >
-                  <TableCell className="pl-6">
-                    <span className="text-lg">
-                      {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : <span className="text-sm text-muted-foreground font-medium">{index + 1}</span>}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/dentists/${dentist.id}`} className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+                  {/* Rank */}
+                  <div className="shrink-0">
+                    {index < 3 ? (
+                      <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${medalColors[index]} flex items-center justify-center text-white text-sm font-black shadow-sm`}>
+                        {index + 1}
+                      </div>
+                    ) : (
+                      <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground">
+                        {index + 1}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Name */}
+                  <div className="flex-1 min-w-0">
+                    <Link href={`/dentists/${dentist.id}`} className="text-sm font-semibold text-foreground hover:text-primary transition-colors group-hover:text-primary">
                       {dentist.name}
                     </Link>
-                    {dentist.clinicName && <p className="text-xs text-muted-foreground">{dentist.clinicName}</p>}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge className="bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">{dentist.caseCount}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right pr-6 font-semibold text-sm text-foreground">{formatCurrency(dentist.revenue)}</TableCell>
-                </motion.tr>
+                    {dentist.clinicName && <p className="text-xs text-muted-foreground truncate">{dentist.clinicName}</p>}
+                  </div>
+
+                  {/* Stats */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Badge className="bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-0 rounded-full px-2.5 py-0.5 text-xs font-bold">
+                      {dentist.caseCount}
+                    </Badge>
+                    <span className="text-sm font-bold text-foreground tabular-nums min-w-[80px] text-right">
+                      {formatCurrency(dentist.revenue)}
+                    </span>
+                  </div>
+                </motion.div>
               ))}
-            </TableBody>
-          </Table>
+              {(!data?.topDentists || data.topDentists.length === 0) && (
+                <div className="text-center text-muted-foreground py-8 text-sm">No dentist data</div>
+              )}
+            </div>
+          </div>
         </GlassCard>
 
         {/* Technician Workload */}
         <GlassCard delay={0.5} padding="p-0">
-          <div className="p-6 pb-4">
-            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <Users className="h-4 w-4 text-indigo-500" />
-              Technician Workload
-            </h3>
-            <p className="text-sm text-muted-foreground mt-0.5">Active & completed cases per technician</p>
+          <div className="p-6 pb-2">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50">
+                <Users className="h-5 w-5 text-indigo-500" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground tracking-tight">Technician Workload</h3>
+                <p className="text-sm text-muted-foreground">Active & completed cases</p>
+              </div>
+            </div>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50 hover:bg-muted/50 border-b border-border/50">
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pl-6">Name</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Active</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Done</TableHead>
-                <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pr-6">Load</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <div className="px-6 pb-6">
+            <div className="space-y-4">
               {(data?.techWorkload || []).map((tech, index) => {
                 const total = tech.activeCases + tech.completedCases;
                 const pct = total > 0 ? Math.round((tech.completedCases / total) * 100) : 0;
+                const loadPct = Math.round((total / maxTechCases) * 100);
                 return (
-                  <motion.tr
+                  <motion.div
                     key={tech.id}
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 + index * 0.05 }}
-                    className="border-b border-border/30 hover:bg-accent/50 transition-colors"
+                    transition={{ delay: 0.5 + index * 0.08 }}
+                    className="space-y-2"
                   >
-                    <TableCell className="pl-6 text-sm font-medium text-foreground">{tech.name}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge className="bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">{tech.activeCases}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge className="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">{tech.completedCases}</Badge>
-                    </TableCell>
-                    <TableCell className="pr-6">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-xs font-bold">
+                          {tech.name.charAt(0)}
                         </div>
-                        <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
+                        <span className="text-sm font-semibold text-foreground">{tech.name}</span>
                       </div>
-                    </TableCell>
-                  </motion.tr>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-0 rounded-full px-2 py-0.5 text-[10px] font-bold">
+                          {tech.activeCases} active
+                        </Badge>
+                        <Badge className="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-0 rounded-full px-2 py-0.5 text-[10px] font-bold">
+                          {tech.completedCases} done
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-2.5 bg-secondary rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 1, delay: 0.6 + index * 0.1, ease: "easeOut" }}
+                          className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full"
+                        />
+                      </div>
+                      <span className="text-xs font-bold text-muted-foreground w-10 text-right tabular-nums">{pct}%</span>
+                    </div>
+                  </motion.div>
                 );
               })}
               {(!data?.techWorkload || data.techWorkload.length === 0) && (
-                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No technician data</TableCell></TableRow>
+                <div className="text-center text-muted-foreground py-8 text-sm">No technician data</div>
               )}
-            </TableBody>
-          </Table>
+            </div>
+          </div>
         </GlassCard>
       </div>
     </div>

@@ -1,19 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +30,10 @@ import {
   Loader2,
   FolderOpen,
   Filter,
+  Receipt,
+  ArrowUpRight,
+  ArrowDownRight,
+  Calendar,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
@@ -45,6 +41,7 @@ import { StatCard } from "@/components/shared/stat-card";
 import { GlassCard } from "@/components/shared/glass-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart } from "@/components/charts/bar-chart";
+import { AreaChart } from "@/components/charts/area-chart";
 import toast from "react-hot-toast";
 
 const EXPENSE_CATEGORIES = [
@@ -58,6 +55,17 @@ const EXPENSE_CATEGORIES = [
   "Other",
 ];
 
+const categoryIcons: Record<string, string> = {
+  Materials: "M",
+  Rent: "R",
+  Salary: "S",
+  Utilities: "U",
+  Equipment: "E",
+  Marketing: "Mk",
+  Transport: "T",
+  Other: "O",
+};
+
 const getCategoryColor = (category: string): string => {
   const colors: Record<string, string> = {
     Materials: "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800",
@@ -70,6 +78,20 @@ const getCategoryColor = (category: string): string => {
     Other: "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700",
   };
   return colors[category] || "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700";
+};
+
+const getCategoryGradient = (category: string): string => {
+  const colors: Record<string, string> = {
+    Materials: "from-blue-400 to-blue-600",
+    Rent: "from-purple-400 to-purple-600",
+    Salary: "from-green-400 to-green-600",
+    Utilities: "from-yellow-400 to-yellow-600",
+    Equipment: "from-indigo-400 to-indigo-600",
+    Marketing: "from-pink-400 to-pink-600",
+    Transport: "from-orange-400 to-orange-600",
+    Other: "from-slate-400 to-slate-600",
+  };
+  return colors[category] || "from-slate-400 to-slate-600";
 };
 
 interface CashFlowData {
@@ -193,8 +215,8 @@ export default function CashFlowPage() {
 
   const cm = cashFlow?.currentMonth;
 
-  // Prepare chart data for Revenue vs Expenses
-  const chartData = (cashFlow?.monthlyBreakdown || []).map((row) => ({
+  // Prepare area chart data for Income vs Expenses
+  const areaChartData = (cashFlow?.monthlyBreakdown || []).map((row) => ({
     month: `${row.month.slice(0, 3)} ${row.year}`,
     Income: row.income,
     Expenses: row.expenses,
@@ -206,8 +228,11 @@ export default function CashFlowPage() {
     amount: cat.amount,
   }));
 
+  // Monthly summary cards data
+  const monthlyCards = (cashFlow?.monthlyBreakdown || []).slice(-3).reverse();
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 mesh-gradient min-h-screen -m-4 lg:-m-6 p-4 lg:p-6">
       {/* Header */}
       <PageHeader title="Cash Flow" subtitle="Track income, expenses & profitability">
         <Button
@@ -268,23 +293,78 @@ export default function CashFlowPage() {
         />
       </div>
 
+      {/* Monthly Summary Cards */}
+      {monthlyCards.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {monthlyCards.map((m, index) => (
+            <motion.div
+              key={`${m.month}-${m.year}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + index * 0.05 }}
+              className="rounded-2xl bg-card border border-border/50 p-5 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-bold text-foreground">{m.month.slice(0, 3)} {m.year}</span>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs text-muted-foreground">Income</span>
+                  </div>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{formatCurrency(m.income)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ArrowDownRight className="h-3.5 w-3.5 text-rose-500" />
+                    <span className="text-xs text-muted-foreground">Expenses</span>
+                  </div>
+                  <span className="text-sm font-bold text-rose-600 dark:text-rose-400 tabular-nums">{formatCurrency(m.expenses)}</span>
+                </div>
+                <div className="h-px bg-border/50" />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground">Net</span>
+                  <span className={`text-sm font-black tabular-nums ${m.net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                    {formatCurrency(m.net)}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Revenue vs Expenses Chart */}
-        <GlassCard className="lg:col-span-2" delay={0.2} padding="p-0">
+        {/* Income vs Expenses Area Chart */}
+        <GlassCard className="lg:col-span-2" delay={0.25} padding="p-0">
           <div className="p-6 pb-2">
-            <h3 className="text-base font-semibold text-foreground">Revenue vs Expenses</h3>
-            <p className="text-sm text-muted-foreground mt-0.5">Monthly comparison (last 6 months)</p>
+            <h3 className="text-base font-bold text-foreground tracking-tight">Income vs Expenses</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Monthly comparison trend</p>
+            <div className="flex items-center gap-4 mt-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                Income
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                Expenses
+              </div>
+            </div>
           </div>
           <div className="px-2 pb-4">
-            {chartData.length > 0 ? (
-              <BarChart
-                data={chartData}
+            {areaChartData.length > 0 ? (
+              <AreaChart
+                data={areaChartData}
                 xKey="month"
-                bars={[
-                  { key: "Income", color: "#10b981", name: "Income" },
-                  { key: "Expenses", color: "#ef4444", name: "Expenses" },
-                ]}
+                yKey="Income"
+                yKey2="Expenses"
+                yLabel="Income"
+                yLabel2="Expenses"
+                color="#10b981"
+                color2="#ef4444"
                 height={280}
                 formatter={(value) => formatCurrency(value)}
               />
@@ -297,9 +377,9 @@ export default function CashFlowPage() {
         </GlassCard>
 
         {/* Top Expense Categories */}
-        <GlassCard delay={0.25} padding="p-0">
+        <GlassCard delay={0.3} padding="p-0">
           <div className="p-6 pb-2">
-            <h3 className="text-base font-semibold text-foreground">Top Expense Categories</h3>
+            <h3 className="text-base font-bold text-foreground tracking-tight">Top Categories</h3>
             <p className="text-sm text-muted-foreground mt-0.5">Where your money goes</p>
           </div>
           <div className="px-2 pb-4">
@@ -321,15 +401,20 @@ export default function CashFlowPage() {
         </GlassCard>
       </div>
 
-      {/* Expense List */}
-      <GlassCard delay={0.3} padding="p-0">
-        <div className="p-6 pb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-semibold text-foreground">Expenses</h3>
-            <p className="text-sm text-muted-foreground mt-0.5">All recorded expenses</p>
+      {/* Expense List - Premium */}
+      <GlassCard delay={0.35} padding="p-0">
+        <div className="p-6 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50">
+              <Receipt className="h-5 w-5 text-rose-500" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-foreground tracking-tight">Expense Log</h3>
+              <p className="text-sm text-muted-foreground mt-0.5">{filteredExpenses.length} transaction{filteredExpenses.length !== 1 ? "s" : ""}</p>
+            </div>
           </div>
           <Select value={filterCategory} onValueChange={setFilterCategory}>
-            <SelectTrigger className="w-[160px] rounded-xl border-border/60">
+            <SelectTrigger className="w-[180px] rounded-xl border-border/60">
               <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
               <SelectValue placeholder="Filter by category" />
             </SelectTrigger>
@@ -343,62 +428,54 @@ export default function CashFlowPage() {
             </SelectContent>
           </Select>
         </div>
+
         <div className="px-6 pb-6">
-          <div className="rounded-xl border border-border/50 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Category</TableHead>
-                  <TableHead className="hidden sm:table-cell text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notes</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredExpenses.map((exp, index) => (
-                  <motion.tr
-                    key={exp.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.03 }}
-                    className="border-b border-border/30 hover:bg-accent/50 transition-colors"
-                  >
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(exp.date)}
-                    </TableCell>
-                    <TableCell className="font-semibold text-sm text-foreground">
-                      {exp.description}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={`${getCategoryColor(exp.category)} text-[11px] font-medium rounded-full px-2.5 py-0.5`}
-                        variant="secondary"
-                      >
-                        {exp.category}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                      {exp.notes || "-"}
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-semibold text-rose-600 dark:text-rose-400">
-                      {formatCurrency(exp.amount)}
-                    </TableCell>
-                  </motion.tr>
-                ))}
-                {filteredExpenses.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center py-12"
+          <div className="space-y-2">
+            {filteredExpenses.map((exp, index) => (
+              <motion.div
+                key={exp.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.03 }}
+                className="flex items-center gap-4 p-4 rounded-xl border border-border/30 hover:bg-accent/30 transition-all duration-200 group"
+              >
+                {/* Category icon */}
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getCategoryGradient(exp.category)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm`}>
+                  {categoryIcons[exp.category] || "?"}
+                </div>
+
+                {/* Description & category */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{exp.description}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge
+                      className={`${getCategoryColor(exp.category)} text-[10px] font-medium rounded-full px-2 py-0`}
+                      variant="secondary"
                     >
-                      <FolderOpen className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-                      <p className="font-medium text-muted-foreground">No expenses found</p>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                      {exp.category}
+                    </Badge>
+                    {exp.notes && <span className="text-xs text-muted-foreground/60 truncate">{exp.notes}</span>}
+                  </div>
+                </div>
+
+                {/* Date & amount */}
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                    -{formatCurrency(exp.amount)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{formatDate(exp.date)}</p>
+                </div>
+              </motion.div>
+            ))}
+            {filteredExpenses.length === 0 && (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-4">
+                  <FolderOpen className="h-8 w-8 text-muted-foreground/40" />
+                </div>
+                <p className="font-semibold text-foreground">No expenses found</p>
+                <p className="text-sm text-muted-foreground mt-1">Add your first expense to start tracking</p>
+              </div>
+            )}
           </div>
         </div>
       </GlassCard>

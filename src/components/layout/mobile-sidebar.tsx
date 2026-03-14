@@ -88,32 +88,38 @@ export default function MobileSidebar({ open, onClose, userRole }: MobileSidebar
     <AnimatePresence>
       {open && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop with enhanced blur */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden"
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-md lg:hidden"
             onClick={onClose}
           />
 
-          {/* Drawer */}
+          {/* Drawer with smoother animation */}
           <motion.div
-            initial={{ x: "-100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "-100%" }}
-            transition={{ type: "spring", stiffness: 350, damping: 35 }}
-            className="fixed left-0 top-0 z-50 h-full w-[280px] bg-[#0f0f23] lg:hidden flex flex-col"
-            style={{
-              backgroundImage: "linear-gradient(to bottom, rgba(99, 102, 241, 0.03), transparent, rgba(139, 92, 246, 0.03))",
-            }}
+            initial={{ x: "-100%", opacity: 0.5 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "-100%", opacity: 0.5 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed left-0 top-0 z-50 h-full w-[280px] bg-[#0f0f23] lg:hidden flex flex-col overflow-hidden"
           >
+            {/* Animated shimmer line at top */}
+            <div className="sidebar-shimmer-line w-full flex-shrink-0" />
+
+            {/* Subtle gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/[0.03] via-transparent to-purple-500/[0.03] pointer-events-none" />
+
             {/* Header */}
-            <div className="flex h-16 items-center justify-between px-4 border-b border-white/[0.06]">
+            <div className="relative flex h-16 items-center justify-between px-4 border-b border-white/[0.06]">
               <Link href="/dashboard" className="flex items-center gap-2.5" onClick={onClose}>
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-                  <Activity className="h-4 w-4 text-white" />
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-lg bg-indigo-500/30 blur-md" />
+                  <div className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                    <Activity className="h-4 w-4 text-white" />
+                  </div>
                 </div>
                 <span className="font-bold text-base text-white tracking-tight">DentalLab</span>
               </Link>
@@ -128,10 +134,14 @@ export default function MobileSidebar({ open, onClose, userRole }: MobileSidebar
             </div>
 
             {/* Navigation */}
-            <ScrollArea className="flex-1 py-3">
-              <nav className="px-3 space-y-5">
-                {filteredSections.map((section) => (
+            <ScrollArea className="flex-1 py-3 relative">
+              <nav className="px-3 space-y-1">
+                {filteredSections.map((section, sectionIndex) => (
                   <div key={section.label}>
+                    {/* Section divider */}
+                    {sectionIndex > 0 && (
+                      <div className="section-divider mx-3 my-3" />
+                    )}
                     <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500/70">
                       {section.label}
                     </p>
@@ -152,6 +162,14 @@ export default function MobileSidebar({ open, onClose, userRole }: MobileSidebar
                                 : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
                             )}
                           >
+                            {/* Active left border accent */}
+                            {isActive && (
+                              <motion.div
+                                layoutId="mobileActiveNavBorder"
+                                className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-gradient-to-b from-indigo-400 to-violet-400 rounded-full"
+                                transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                              />
+                            )}
                             {isActive && (
                               <motion.div
                                 layoutId="mobileActiveNav"
@@ -174,10 +192,13 @@ export default function MobileSidebar({ open, onClose, userRole }: MobileSidebar
             </ScrollArea>
 
             {/* User section */}
-            <div className="border-t border-white/[0.06] p-3">
+            <div className="relative border-t border-white/[0.06] p-3">
               <div className="flex items-center gap-3 rounded-xl bg-white/[0.04] backdrop-blur-sm p-3 border border-white/[0.06]">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/25 flex-shrink-0">
-                  {initials}
+                <div className="relative flex-shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-indigo-500/25">
+                    {initials}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-[#0f0f23] shadow-sm shadow-emerald-400/50" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-white truncate">{user?.name || "User"}</p>
