@@ -1,100 +1,59 @@
 import { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import prisma from "./prisma";
+import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Email and password are required");
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email },
+        });
+
+        if (!user || !user.password) {
+          throw new Error("Invalid email or password");
+        }
+
+        if (!user.emailVerified) {
+          throw new Error("Please verify your email first");
+        }
+
+        if (!user.active) {
+          throw new Error("Your account has been deactivated");
+        }
+
+        const isValid = await bcrypt.compare(credentials.password, user.password);
+        if (!isValid) {
+          throw new Error("Invalid email or password");
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.avatar || user.image,
+          role: user.role,
+          labId: user.labId,
+          labName: null,
+        };
+      },
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
-      if (account?.provider === "google") {
-        // Check if user already exists by email
-        const existingUser = await prisma.user.findUnique({
-          where: { email: user.email! },
-        });
-
-        if (existingUser) {
-          // Link Google account to existing user if not already linked
-          const existingAccount = await prisma.account.findFirst({
-            where: {
-              userId: existingUser.id,
-              provider: "google",
-            },
-          });
-
-          if (!existingAccount) {
-            await prisma.account.create({
-              data: {
-                userId: existingUser.id,
-                type: account.type,
-                provider: account.provider,
-                providerAccountId: account.providerAccountId,
-                refresh_token: account.refresh_token as string | undefined,
-                access_token: account.access_token as string | undefined,
-                expires_at: account.expires_at,
-                token_type: account.token_type,
-                scope: account.scope,
-                id_token: account.id_token as string | undefined,
-                session_state: account.session_state as string | undefined,
-              },
-            });
-          }
-
-          // Update avatar if not set
-          if (!existingUser.avatar && user.image) {
-            await prisma.user.update({
-              where: { id: existingUser.id },
-              data: { avatar: user.image, image: user.image },
-            });
-          }
-
-          return true;
-        }
-
-        // New user — auto-create with default role
-        // Find the default lab to assign
-        const defaultLab = await prisma.lab.findFirst();
-
-        await prisma.user.create({
-          data: {
-            email: user.email!,
-            name: user.name || user.email!.split("@")[0],
-            image: user.image,
-            avatar: user.image,
-            emailVerified: new Date(),
-            role: "RECEPTION", // Default role for new Google sign-ins
-            active: true,
-            labId: defaultLab?.id || null,
-            accounts: {
-              create: {
-                type: account.type,
-                provider: account.provider,
-                providerAccountId: account.providerAccountId,
-                refresh_token: account.refresh_token as string | undefined,
-                access_token: account.access_token as string | undefined,
-                expires_at: account.expires_at,
-                token_type: account.token_type,
-                scope: account.scope,
-                id_token: account.id_token as string | undefined,
-                session_state: account.session_state as string | undefined,
-              },
-            },
-          },
-        });
-
-        return true;
-      }
-      return true;
-    },
-    async jwt({ token, user, account, trigger }) {
+    async jwt({ token, user, trigger }) {
       if (trigger === "signIn" || trigger === "signUp") {
-        // Fetch full user data from DB
         const dbUser = await prisma.user.findUnique({
           where: { email: token.email! },
           include: { lab: true },
