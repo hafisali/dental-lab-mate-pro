@@ -72,6 +72,9 @@ export const authOptions: NextAuthOptions = {
           token.labId = dbUser.labId;
           token.labName = dbUser.lab?.name || null;
           token.picture = dbUser.image || dbUser.avatar;
+          token.planTier = dbUser.lab?.planTier || "TRIAL";
+          token.onboardingComplete = dbUser.lab?.onboardingComplete ?? false;
+          token.trialEndsAt = dbUser.lab?.trialEndsAt?.toISOString() || null;
         }
       }
       return token;
@@ -83,6 +86,9 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).labId = token.labId;
         (session.user as any).labName = token.labName;
         (session.user as any).image = token.picture as string;
+        (session.user as any).planTier = token.planTier;
+        (session.user as any).onboardingComplete = token.onboardingComplete;
+        (session.user as any).trialEndsAt = token.trialEndsAt;
       }
       return session;
     },

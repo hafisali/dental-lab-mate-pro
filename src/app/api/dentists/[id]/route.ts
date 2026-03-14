@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,10 +11,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const { id } = await params;
 
-    const dentist = await prisma.dentist.findUnique({
-      where: { id },
+    const dentist = await prisma.dentist.findFirst({
+      where: { id, ...getTenantWhere(labId) },
       include: {
         cases: {
           orderBy: { createdAt: "desc" },

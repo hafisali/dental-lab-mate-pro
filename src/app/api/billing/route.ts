@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateInvoiceNumber } from "@/lib/utils";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,8 +12,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
-    const labId = user.labId;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
+    const tenantWhere = getTenantWhere(labId);
     const searchParams = req.nextUrl.searchParams;
     const type = searchParams.get("type") || "invoices";
     const dentistId = searchParams.get("dentistId");
@@ -21,7 +28,7 @@ export async function GET(req: NextRequest) {
     if (type === "payments") {
       const where: any = {};
       if (dentistId) where.dentistId = dentistId;
-      if (labId) where.dentist = { labId };
+      if (labId) where.dentist = { ...tenantWhere };
 
       const payments = await prisma.payment.findMany({
         where,
@@ -36,8 +43,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Invoices
-    const where: any = {};
-    if (labId) where.labId = labId;
+    const where: any = { ...tenantWhere };
     if (dentistId) where.dentistId = dentistId;
     if (status) where.status = status;
 
@@ -66,7 +72,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const body = await req.json();
 
     if (body.type === "payment") {
@@ -121,7 +133,7 @@ export async function POST(req: NextRequest) {
         tax: body.tax || 0,
         total,
         notes: body.notes || null,
-        labId: user.labId,
+        labId,
         status: "SENT",
       },
       include: {

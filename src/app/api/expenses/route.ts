@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,11 +11,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
-    const labId = user.labId;
-
-    if (!labId) {
-      return NextResponse.json({ error: "No lab assigned" }, { status: 400 });
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
 
     const searchParams = req.nextUrl.searchParams;
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get("endDate");
     const category = searchParams.get("category");
 
-    const where: any = { labId };
+    const where: any = { ...getTenantWhere(labId) };
 
     if (startDate || endDate) {
       where.date = {};
@@ -57,11 +58,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
-    const labId = user.labId;
-
-    if (!labId) {
-      return NextResponse.json({ error: "No lab assigned" }, { status: 400 });
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
 
     const body = await req.json();

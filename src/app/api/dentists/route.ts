@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,14 +11,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
-    const labId = user.labId;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const searchParams = req.nextUrl.searchParams;
     const search = searchParams.get("search");
     const all = searchParams.get("all");
 
-    const where: any = {};
-    if (labId) where.labId = labId;
+    const where: any = { ...getTenantWhere(labId) };
     where.active = true;
 
     if (search) {
@@ -51,7 +56,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const body = await req.json();
 
     const dentist = await prisma.dentist.create({
@@ -63,7 +74,7 @@ export async function POST(req: NextRequest) {
         email: body.email || null,
         address: body.address || null,
         notes: body.notes || null,
-        labId: user.labId,
+        labId,
       },
     });
 

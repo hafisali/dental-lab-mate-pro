@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,14 +11,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
-    const labId = user.labId;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const searchParams = req.nextUrl.searchParams;
     const search = searchParams.get("search");
     const dentistId = searchParams.get("dentistId");
 
-    const where: any = {};
-    if (labId) where.labId = labId;
+    const where: any = { ...getTenantWhere(labId) };
     if (dentistId) where.dentistId = dentistId;
 
     if (search) {
@@ -51,7 +56,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const body = await req.json();
 
     const patient = await prisma.patient.create({
@@ -62,7 +73,7 @@ export async function POST(req: NextRequest) {
         phone: body.phone || null,
         notes: body.notes || null,
         dentistId: body.dentistId,
-        labId: user.labId,
+        labId,
       },
       include: {
         dentist: { select: { id: true, name: true } },

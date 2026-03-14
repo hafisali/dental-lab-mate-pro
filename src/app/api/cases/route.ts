@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateCaseNumber } from "@/lib/utils";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,8 +12,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const user = session.user as any;
-    const labId = user.labId;
     const searchParams = req.nextUrl.searchParams;
 
     const status = searchParams.get("status");
@@ -23,8 +30,7 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const skip = (page - 1) * limit;
 
-    const where: any = {};
-    if (labId) where.labId = labId;
+    const where: any = { ...getTenantWhere(labId) };
     if (status) where.status = status;
     if (dentistId) where.dentistId = dentistId;
     if (technicianId) where.technicianId = technicianId;
@@ -80,7 +86,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const body = await req.json();
 
     const caseNumber = generateCaseNumber();
@@ -99,7 +111,7 @@ export async function POST(req: NextRequest) {
         priority: body.priority || "NORMAL",
         amount: body.amount || 0,
         remarks: body.remarks || null,
-        labId: user.labId,
+        labId,
         status: "RECEIVED",
       },
       include: {

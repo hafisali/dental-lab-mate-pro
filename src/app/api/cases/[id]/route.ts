@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,10 +11,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const { id } = await params;
 
-    const caseData = await prisma.case.findUnique({
-      where: { id },
+    const caseData = await prisma.case.findFirst({
+      where: { id, ...getTenantWhere(labId) },
       include: {
         dentist: true,
         patient: true,
@@ -41,8 +49,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const { id } = await params;
     const body = await req.json();
+
+    // Verify the case belongs to this tenant
+    const existing = await prisma.case.findFirst({
+      where: { id, ...getTenantWhere(labId) },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Case not found" }, { status: 404 });
+    }
 
     const updateData: any = {};
     if (body.status !== undefined) updateData.status = body.status;
@@ -80,12 +103,27 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const user = session.user as any;
     if (!["ADMIN", "LAB_OWNER"].includes(user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;
+
+    // Verify the case belongs to this tenant
+    const existing = await prisma.case.findFirst({
+      where: { id, ...getTenantWhere(labId) },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Case not found" }, { status: 404 });
+    }
 
     await prisma.case.delete({ where: { id } });
 

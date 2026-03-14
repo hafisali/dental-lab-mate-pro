@@ -49,6 +49,50 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+enum PlanTier {
+  TRIAL
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum OrthoStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ToothStatus {
+  HEALTHY
+  TREATMENT_DONE
+  ONGOING
+  FILLING
+  EXTRACTION
+  PLANNED
+  MISSING
+}
+
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
@@ -104,26 +148,52 @@ model Session {
 model Lab {
   id            String          @id @default(cuid())
   name          String
+  slug          String?         @unique
   address       String?
   phone         String?
   email         String?
   logo          String?
-  currency      String          @default("INR")
+  currency      String          @default("USD")
   taxRate       Float           @default(0)
   plan          String          @default("trial")
+  planTier      PlanTier        @default(TRIAL)
   planExpiresAt DateTime?
-  maxUsers      Int             @default(5)
+  trialEndsAt   DateTime?
+  maxUsers      Int             @default(2)
   isActive      Boolean         @default(true)
-  users     User[]
-  branches  Branch[]
-  dentists  Dentist[]
-  patients  Patient[]
-  cases     Case[]
-  invoices  Invoice[]
-  inventory InventoryItem[]
-  expenses  Expense[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  // Stripe fields
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?
+  // Branding
+  primaryColor  String          @default("#6366f1")
+  tagline       String?
+  website       String?
+  timezone      String          @default("UTC")
+  // SaaS tracking
+  storageUsedMB Float           @default(0)
+  onboardingComplete Boolean    @default(false)
+  billingEmail  String?
+  // Relations
+  users               User[]
+  branches            Branch[]
+  dentists            Dentist[]
+  patients            Patient[]
+  cases               Case[]
+  invoices            Invoice[]
+  inventory           InventoryItem[]
+  expenses            Expense[]
+  appointments        Appointment[]
+  prescriptions       Prescription[]
+  staff               Staff[]
+  pharmacyItems       PharmacyItem[]
+  pharmacySales       PharmacySale[]
+  orthodonticPlans    OrthodonticPlan[]
+  dentalCharts        DentalChart[]
+  medicalCertificates MedicalCertificate[]
+  subscription        Subscription?
+  invitations         Invitation[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model Branch {
@@ -151,14 +221,17 @@ model Dentist {
   balance    Float     @default(0)
   notes      String?
   active     Boolean   @default(true)
-  labId      String
-  lab        Lab       @relation(fields: [labId], references: [id], onDelete: Cascade)
-  patients   Patient[]
-  cases      Case[]
-  invoices   Invoice[]
-  payments   Payment[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  labId            String
+  lab              Lab               @relation(fields: [labId], references: [id], onDelete: Cascade)
+  patients         Patient[]
+  cases            Case[]
+  invoices         Invoice[]
+  payments         Payment[]
+  appointments     Appointment[]
+  prescriptions    Prescription[]
+  orthodonticPlans OrthodonticPlan[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([labId])
   @@index([name])
@@ -173,11 +246,19 @@ model Patient {
   notes     String?
   dentistId String
   dentist   Dentist  @relation(fields: [dentistId], references: [id], onDelete: Cascade)
-  labId     String
-  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
-  cases     Case[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  labId              String
+  lab                Lab                 @relation(fields: [labId], references: [id], onDelete: Cascade)
+  cases              Case[]
+  appointments       Appointment[]
+  prescriptions      Prescription[]
+  medicalHistory     MedicalHistory?
+  medicalCertificates MedicalCertificate[]
+  pharmacySales      PharmacySale[]
+  orthodonticPlans   OrthodonticPlan[]
+  dentalCharts       DentalChart[]
+  photos             PatientPhoto[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([dentistId])
   @@index([labId])
@@ -379,4 +460,320 @@ model LoginActivity {
   @@index([email])
   @@index([createdAt])
   @@index([action])
+}
+
+model Appointment {
+  id           String            @id @default(cuid())
+  patientId    String
+  patient      Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dentistId    String
+  dentist      Dentist           @relation(fields: [dentistId], references: [id], onDelete: Cascade)
+  labId        String
+  lab          Lab               @relation(fields: [labId], references: [id], onDelete: Cascade)
+  date         DateTime
+  time         String
+  duration     Int               @default(30)
+  treatment    String
+  status       AppointmentStatus @default(SCHEDULED)
+  notes        String?
+  reminderSent Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([patientId])
+  @@index([dentistId])
+  @@index([labId])
+  @@index([date])
+  @@index([status])
+}
+
+model Prescription {
+  id        String             @id @default(cuid())
+  patientId String
+  patient   Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dentistId String?
+  dentist   Dentist?           @relation(fields: [dentistId], references: [id])
+  labId     String
+  lab       Lab                @relation(fields: [labId], references: [id], onDelete: Cascade)
+  date      DateTime           @default(now())
+  notes     String?
+  items     PrescriptionItem[]
+  createdAt DateTime           @default(now())
+
+  @@index([patientId])
+  @@index([dentistId])
+  @@index([labId])
+}
+
+model PrescriptionItem {
+  id             String       @id @default(cuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicineName   String
+  dosage         String
+  frequency      String
+  duration       String
+  instructions   String?
+  createdAt      DateTime     @default(now())
+
+  @@index([prescriptionId])
+}
+
+model MedicalHistory {
+  id          String   @id @default(cuid())
+  patientId   String   @unique
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  allergies   String?
+  conditions  String?
+  bloodGroup  String?
+  notes       String?
+  lastUpdated DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientId])
+}
+
+model MedicalCertificate {
+  id             String    @id @default(cuid())
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorName     String
+  diagnosis      String
+  restPeriodFrom DateTime
+  restPeriodTo   DateTime
+  fitnessDate    DateTime?
+  notes          String?
+  filePath       String?
+  labId          String
+  lab            Lab       @relation(fields: [labId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+
+  @@index([patientId])
+  @@index([labId])
+}
+
+model Staff {
+  id         String         @id @default(cuid())
+  name       String
+  role       String
+  phone      String
+  email      String?
+  salary     Float          @default(0)
+  joinedDate DateTime
+  status     StaffStatus    @default(ACTIVE)
+  labId      String
+  lab        Lab            @relation(fields: [labId], references: [id], onDelete: Cascade)
+  attendance StaffAttendance[]
+  payments   StaffPayment[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([labId])
+}
+
+model StaffAttendance {
+  id        String           @id @default(cuid())
+  staffId   String
+  staff     Staff            @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  date      DateTime
+  status    AttendanceStatus @default(PRESENT)
+  notes     String?
+  createdAt DateTime         @default(now())
+
+  @@unique([staffId, date])
+  @@index([staffId])
+  @@index([date])
+}
+
+model StaffPayment {
+  id         String        @id @default(cuid())
+  staffId    String
+  staff      Staff         @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  date       DateTime
+  amount     Float
+  method     PaymentMethod @default(CASH)
+  remarks    String?
+  deductions Float         @default(0)
+  bonuses    Float         @default(0)
+  createdAt  DateTime      @default(now())
+
+  @@index([staffId])
+}
+
+model PharmacyItem {
+  id            String             @id @default(cuid())
+  name          String
+  genericName   String?
+  category      String?
+  batchNo       String?
+  expiryDate    DateTime?
+  quantity      Float              @default(0)
+  mrp           Float              @default(0)
+  purchasePrice Float              @default(0)
+  minStock      Float              @default(5)
+  supplier      String?
+  rackLocation  String?
+  labId         String
+  lab           Lab                @relation(fields: [labId], references: [id], onDelete: Cascade)
+  sales         PharmacySaleItem[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([labId])
+  @@index([name])
+}
+
+model PharmacySale {
+  id           String             @id @default(cuid())
+  patientName  String?
+  patientPhone String?
+  patientId    String?
+  patient      Patient?           @relation(fields: [patientId], references: [id])
+  date         DateTime           @default(now())
+  totalAmount  Float
+  paymentMode  PaymentMethod      @default(CASH)
+  doctorName   String?
+  labId        String
+  lab          Lab                @relation(fields: [labId], references: [id], onDelete: Cascade)
+  items        PharmacySaleItem[]
+  createdAt    DateTime           @default(now())
+
+  @@index([patientId])
+  @@index([labId])
+  @@index([date])
+}
+
+model PharmacySaleItem {
+  id        String        @id @default(cuid())
+  saleId    String
+  sale      PharmacySale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  itemId    String?
+  item      PharmacyItem? @relation(fields: [itemId], references: [id])
+  itemName  String
+  quantity  Float
+  price     Float
+  total     Float
+  createdAt DateTime      @default(now())
+
+  @@index([saleId])
+  @@index([itemId])
+}
+
+model OrthodonticPlan {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dentistId String?
+  dentist   Dentist?       @relation(fields: [dentistId], references: [id])
+  diagnosis String
+  totalCost Float
+  startDate DateTime
+  status    OrthoStatus    @default(ACTIVE)
+  notes     String?
+  labId     String
+  lab       Lab            @relation(fields: [labId], references: [id], onDelete: Cascade)
+  payments  OrthoPayment[]
+  records   OrthoRecord[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([patientId])
+  @@index([dentistId])
+  @@index([labId])
+}
+
+model OrthoPayment {
+  id        String          @id @default(cuid())
+  planId    String
+  plan      OrthodonticPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  date      DateTime
+  amount    Float
+  method    PaymentMethod   @default(CASH)
+  notes     String?
+  createdAt DateTime        @default(now())
+
+  @@index([planId])
+}
+
+model OrthoRecord {
+  id         String          @id @default(cuid())
+  planId     String
+  plan       OrthodonticPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  date       DateTime
+  notes      String?
+  imagePath  String?
+  doctorName String?
+  createdAt  DateTime        @default(now())
+
+  @@index([planId])
+}
+
+model DentalChart {
+  id             String      @id @default(cuid())
+  patientId      String
+  patient        Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  toothNumber    Int
+  diagnosis      String?
+  treatment      String?
+  status         ToothStatus @default(HEALTHY)
+  surface        String?
+  completionDate DateTime?
+  notes          String?
+  labId          String
+  lab            Lab         @relation(fields: [labId], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([patientId])
+  @@index([labId])
+  @@index([toothNumber])
+}
+
+model PatientPhoto {
+  id          String   @id @default(cuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  filePath    String
+  description String?
+  toothNumber Int?
+  dateAdded   DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([patientId])
+}
+
+model Subscription {
+  id                   String   @id @default(cuid())
+  labId                String   @unique
+  lab                  Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String   @unique
+  stripePriceId        String
+  stripeCustomerId     String
+  status               String   // active, past_due, canceled, trialing
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([stripeCustomerId])
+  @@index([status])
+}
+
+model Invitation {
+  id        String   @id @default(cuid())
+  email     String
+  labId     String
+  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+  role      Role     @default(RECEPTION)
+  token     String   @unique
+  expiresAt DateTime
+  accepted  Boolean  @default(false)
+  invitedBy String
+  createdAt DateTime @default(now())
+
+  @@unique([email, labId])
+  @@index([token])
+  @@index([labId])
 }

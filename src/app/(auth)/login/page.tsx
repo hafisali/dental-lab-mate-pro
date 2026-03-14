@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, Loader2, Shield, Zap, BarChart3, CheckCircle2,
-  Mail, Lock, User, ArrowRight, ArrowLeft, KeyRound, Eye, EyeOff
+  Mail, Lock, User, ArrowRight, ArrowLeft, KeyRound, Eye, EyeOff,
+  Building2, Ticket
 } from "lucide-react";
 
 type AuthState = "login" | "register" | "verify";
@@ -24,6 +25,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [clinicName, setClinicName] = useState("");
+  const [inviteToken, setInviteToken] = useState("");
+  const [showInviteField, setShowInviteField] = useState(false);
 
   // OTP
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -87,7 +91,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, clinicName: clinicName || undefined, inviteToken: inviteToken || undefined }),
       });
 
       const data = await res.json();
@@ -226,18 +230,18 @@ export default function LoginPage() {
           </div>
 
           <h1 className="text-4xl font-bold leading-tight mb-6">
-            Streamline Your<br />Dental Lab Workflow
+            Start Your Free<br />14-Day Trial
           </h1>
           <p className="text-lg text-indigo-100 mb-10 leading-relaxed max-w-md">
-            Manage cases, track orders, handle billing, and grow your dental lab business with our all-in-one platform.
+            Your own cloud dental clinic in minutes. Manage cases, patients, billing, and your entire team from one platform -- no setup fees, no contracts.
           </p>
 
           <div className="space-y-5">
             {[
+              { icon: Building2, title: "Your Own Workspace", desc: "Isolated clinic with custom branding & domain" },
               { icon: Zap, title: "Fast Case Tracking", desc: "Real-time updates from received to delivered" },
-              { icon: BarChart3, title: "Financial Insights", desc: "Complete billing and payment management" },
-              { icon: Shield, title: "Secure & Reliable", desc: "Enterprise-grade security for your data" },
-              { icon: CheckCircle2, title: "WhatsApp Integration", desc: "Instant messaging with dentists" },
+              { icon: BarChart3, title: "Team & Role Management", desc: "Invite staff with granular permissions" },
+              { icon: Shield, title: "Secure & Multi-Tenant", desc: "Enterprise-grade isolation for every clinic" },
             ].map((f, i) => (
               <div key={i} className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
@@ -372,7 +376,7 @@ export default function LoginPage() {
                       <User className="w-7 h-7 text-white" />
                     </div>
                     <h2 className="text-2xl font-bold text-foreground">Create account</h2>
-                    <p className="text-muted-foreground mt-1">Get started with Dental Lab Mate Pro</p>
+                    <p className="text-muted-foreground mt-1">Start your free 14-day trial</p>
                   </div>
 
                   {error && (
@@ -396,6 +400,48 @@ export default function LoginPage() {
                         />
                       </div>
                     </div>
+
+                    {!showInviteField && (
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-1.5 block">Clinic / Lab Name</label>
+                        <div className="relative">
+                          <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <input
+                            type="text"
+                            value={clinicName}
+                            onChange={(e) => setClinicName(e.target.value)}
+                            placeholder="My Dental Clinic"
+                            required={!showInviteField}
+                            className="w-full h-12 pl-11 pr-4 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {showInviteField && (
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-1.5 block">Invitation Token</label>
+                        <div className="relative">
+                          <Ticket className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <input
+                            type="text"
+                            value={inviteToken}
+                            onChange={(e) => setInviteToken(e.target.value)}
+                            placeholder="Paste your invitation token"
+                            required
+                            className="w-full h-12 pl-11 pr-4 rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => { setShowInviteField(!showInviteField); setInviteToken(""); setClinicName(""); }}
+                      className="text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                    >
+                      {showInviteField ? "Create a new clinic instead" : "Have an invitation? Enter token"}
+                    </button>
 
                     <div>
                       <label className="text-sm font-medium text-foreground mb-1.5 block">Email</label>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET() {
   try {
@@ -10,10 +11,15 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
-    const labId = user.labId;
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
 
     if (!labId) {
+      // SUPERADMIN without a specific lab selected
       return NextResponse.json({
         todayCases: 0,
         pendingCases: 0,
@@ -25,6 +31,8 @@ export async function GET() {
         monthlyRevenue: [],
       });
     }
+
+    const tenantWhere = getTenantWhere(labId);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -41,16 +49,16 @@ export async function GET() {
       dentistBalances,
     ] = await Promise.all([
       prisma.case.count({
-        where: { labId, date: { gte: today, lt: tomorrow } },
+        where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
       }),
       prisma.case.count({
-        where: { labId, status: { in: ["RECEIVED", "WORKING", "TRIAL"] } },
+        where: { ...tenantWhere, status: { in: ["RECEIVED", "WORKING", "TRIAL"] } },
       }),
       prisma.case.count({
-        where: { labId, status: "DELIVERED" },
+        where: { ...tenantWhere, status: "DELIVERED" },
       }),
       prisma.case.findMany({
-        where: { labId },
+        where: { ...tenantWhere },
         orderBy: { createdAt: "desc" },
         take: 10,
         include: {
@@ -60,15 +68,15 @@ export async function GET() {
       }),
       prisma.case.groupBy({
         by: ["status"],
-        where: { labId },
+        where: { ...tenantWhere },
         _count: { status: true },
       }),
       prisma.payment.aggregate({
-        where: { dentist: { labId } },
+        where: { dentist: { ...tenantWhere } },
         _sum: { amount: true },
       }),
       prisma.dentist.aggregate({
-        where: { labId },
+        where: { ...tenantWhere },
         _sum: { balance: true },
       }),
     ]);
@@ -91,7 +99,7 @@ export async function GET() {
 
       const monthPayments = await prisma.payment.aggregate({
         where: {
-          dentist: { labId },
+          dentist: { ...tenantWhere },
           date: { gte: startOfMonth, lte: endOfMonth },
         },
         _sum: { amount: true },

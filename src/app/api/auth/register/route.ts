@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { logActivity } from "@/lib/activity-logger";
+import { generateUniqueSlug } from "@/lib/tenant";
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, password } = await req.json();
+    const { name, email, password, clinicName, inviteToken } = await req.json();
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: "All fields are required" }, { status: 400 });
+    }
+
+    if (!inviteToken && !clinicName) {
+      return NextResponse.json({ error: "Clinic name is required" }, { status: 400 });
     }
 
     if (password.length < 6) {
@@ -23,17 +28,61 @@ export async function POST(req: NextRequest) {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Find default lab
-    const defaultLab = await prisma.lab.findFirst();
+    let labId: string | null = null;
+    let userRole: any = "LAB_OWNER";
+
+    if (inviteToken) {
+      // Invitation-based registration
+      const invitation = await prisma.invitation.findUnique({
+        where: { token: inviteToken },
+      });
+
+      if (!invitation) {
+        return NextResponse.json({ error: "Invalid invitation token" }, { status: 400 });
+      }
+
+      if (invitation.accepted) {
+        return NextResponse.json({ error: "This invitation has already been used" }, { status: 400 });
+      }
+
+      if (new Date() > invitation.expiresAt) {
+        return NextResponse.json({ error: "This invitation has expired" }, { status: 400 });
+      }
+
+      labId = invitation.labId;
+      userRole = invitation.role;
+
+      // Mark invitation as accepted
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { accepted: true },
+      });
+    } else {
+      // New clinic registration
+      const slug = await generateUniqueSlug(clinicName);
+
+      const newLab = await prisma.lab.create({
+        data: {
+          name: clinicName,
+          slug,
+          planTier: "TRIAL",
+          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          maxUsers: 2,
+        },
+      });
+
+      labId = newLab.id;
+      userRole = "LAB_OWNER";
+    }
 
     const user = await prisma.user.create({
       data: {
         email,
         name,
         password: hashedPassword,
-        role: "RECEPTION",
+        role: userRole,
         active: true,
-        labId: defaultLab?.id || null,
+        labId,
       },
     });
 

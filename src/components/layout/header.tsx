@@ -1,7 +1,6 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
-import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -12,71 +11,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Bell, Menu, LogOut, User, Search, ChevronRight, Settings, Command } from "lucide-react";
+import { Bell, Menu, LogOut, User, Search, Settings, Plus } from "lucide-react";
 import Link from "next/link";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
-import { motion } from "framer-motion";
 
 interface HeaderProps {
   onMenuToggle: () => void;
 }
 
-const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/cases": "Cases",
-  "/dentists": "Dentists",
-  "/patients": "Patients",
-  "/billing": "Billing",
-  "/inventory": "Inventory",
-  "/cashflow": "Cash Flow",
-  "/analytics": "Analytics",
-  "/whatsapp": "WhatsApp",
-  "/technician": "Technician Panel",
-  "/notifications": "Notifications",
-  "/settings": "Settings",
-};
-
-function getBreadcrumb(pathname: string): { parent?: string; parentHref?: string; current: string } {
-  // Handle nested routes like /cases/new or /cases/[id]
-  const segments = pathname.split("/").filter(Boolean);
-
-  if (segments.length >= 2) {
-    const parentPath = `/${segments[0]}`;
-    const parentName = pageTitles[parentPath] || segments[0].charAt(0).toUpperCase() + segments[0].slice(1);
-
-    let currentName = segments[1];
-    if (currentName === "new") {
-      currentName = "New";
-    } else {
-      currentName = "Details";
-    }
-
-    return {
-      parent: parentName,
-      parentHref: parentPath,
-      current: currentName,
-    };
-  }
-
-  const current = pageTitles[pathname] || "Page";
-  return { current };
-}
-
-function getRoleBadgeColor(role?: string) {
-  switch (role) {
-    case "SUPERADMIN": return "bg-red-500/10 text-red-400 border-red-500/20";
-    case "ADMIN": return "bg-violet-500/10 text-violet-400 border-violet-500/20";
-    case "LAB_OWNER": return "bg-indigo-500/10 text-indigo-400 border-indigo-500/20";
-    case "TECHNICIAN": return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
-    case "DENTIST": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
-    case "RECEPTION": return "bg-amber-500/10 text-amber-400 border-amber-500/20";
-    default: return "bg-slate-500/10 text-slate-400 border-slate-500/20";
-  }
-}
-
 export default function Header({ onMenuToggle }: HeaderProps) {
   const { data: session } = useSession();
-  const pathname = usePathname();
   const user = session?.user as any;
 
   const initials = user?.name
@@ -86,145 +29,111 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     .toUpperCase()
     .slice(0, 2) || "U";
 
-  const breadcrumb = getBreadcrumb(pathname);
-
   return (
-    <header className="glass-header sticky top-0 z-30 flex h-16 items-center justify-between px-4 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-white border-b border-gray-200 shadow-sm px-4 lg:px-6">
+      {/* Left side: hamburger + New button */}
       <div className="flex items-center gap-3">
-        {/* Mobile menu toggle */}
-        <Button variant="ghost" size="icon" onClick={onMenuToggle} className="lg:hidden hover:bg-accent rounded-xl">
+        <button
+          onClick={onMenuToggle}
+          className="lg:hidden inline-flex items-center justify-center h-9 w-9 rounded-md text-gray-600 hover:bg-gray-100 transition-colors"
+        >
           <Menu className="h-5 w-5" />
-        </Button>
+        </button>
 
-        {/* Breadcrumbs */}
-        <nav className="hidden sm:flex items-center gap-1.5 text-sm">
-          {breadcrumb.parent && breadcrumb.parentHref ? (
-            <>
-              <Link
-                href={breadcrumb.parentHref}
-                className="text-muted-foreground hover:text-foreground transition-colors duration-200 font-medium"
-              >
-                {breadcrumb.parent}
-              </Link>
-              <motion.div
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.2 }}
-              >
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40" />
-              </motion.div>
-              <motion.span
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.2, delay: 0.05 }}
-                className="font-semibold text-foreground"
-              >
-                {breadcrumb.current}
-              </motion.span>
-            </>
-          ) : (
-            <motion.span
-              key={breadcrumb.current}
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className="font-semibold text-foreground"
-            >
-              {breadcrumb.current}
-            </motion.span>
-          )}
-        </nav>
+        <Link href="/cases?new=true">
+          <button className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-white text-sm font-medium transition-colors"
+            style={{ backgroundColor: "#4CAF50" }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#43A047")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#4CAF50")}
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </button>
+        </Link>
       </div>
 
-      <div className="flex items-center gap-2">
-        {/* Cmd+K Search trigger - more prominent */}
-        <Button
-          variant="outline"
-          className="hidden md:flex items-center gap-2 h-9 px-3 rounded-xl border-border/50 text-muted-foreground hover:text-foreground hover:border-indigo-300/30 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/5 text-sm transition-all duration-200"
-        >
-          <Search className="h-3.5 w-3.5" />
-          <span className="text-xs">Search...</span>
-          <kbd className="pointer-events-none ml-2 inline-flex h-5 select-none items-center gap-0.5 rounded border border-border/50 bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-            <span className="text-[10px]">&#8984;</span>K
-          </kbd>
-        </Button>
+      {/* Center: search bar */}
+      <div className="hidden md:flex flex-1 max-w-md mx-6">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search"
+            className="w-full h-9 pl-9 pr-4 rounded-lg text-sm text-gray-700 placeholder-gray-400 outline-none transition-colors"
+            style={{ backgroundColor: "#f5f5f5" }}
+            onFocus={(e) => {
+              e.currentTarget.style.backgroundColor = "#eeeeee";
+              e.currentTarget.style.boxShadow = "0 0 0 2px rgba(76,175,80,0.2)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.backgroundColor = "#f5f5f5";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          />
+        </div>
+      </div>
 
-        {/* Theme toggle */}
-        <ThemeToggle />
-
-        {/* Notification bell with pulse */}
+      {/* Right side: icons + avatar */}
+      <div className="flex items-center gap-1">
+        {/* Notifications */}
         <Link href="/notifications">
-          <Button variant="ghost" size="icon" className="relative hover:bg-accent rounded-xl">
-            <Bell className="h-5 w-5 text-muted-foreground" />
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="absolute -top-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-background animate-notification-pulse"
-            >
+          <button className="relative inline-flex items-center justify-center h-9 w-9 rounded-md text-gray-500 hover:bg-gray-100 transition-colors">
+            <Bell className="h-5 w-5" />
+            <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
               3
-            </motion.span>
-          </Button>
+            </span>
+          </button>
+        </Link>
+
+        {/* Settings */}
+        <Link href="/settings">
+          <button className="inline-flex items-center justify-center h-9 w-9 rounded-md text-gray-500 hover:bg-gray-100 transition-colors">
+            <Settings className="h-5 w-5" />
+          </button>
         </Link>
 
         {/* User avatar dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2.5 px-2 hover:bg-accent rounded-xl">
-              <div className="relative">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-gradient-to-br from-indigo-400 to-indigo-600 text-white text-xs font-bold">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                {/* Online dot */}
-                <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-background" />
-              </div>
-              <div className="hidden sm:flex flex-col items-start text-left">
-                <span className="text-sm font-semibold text-foreground">{user?.name}</span>
-                <span className="text-[11px] text-muted-foreground font-medium">{user?.role}</span>
-              </div>
-            </Button>
+            <button className="inline-flex items-center justify-center h-9 w-9 rounded-full ml-1 hover:ring-2 hover:ring-gray-200 transition-all">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-emerald-500 text-white text-xs font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 rounded-xl shadow-lg border-border/50 p-1">
+          <DropdownMenuContent align="end" className="w-56 rounded-lg shadow-lg border border-gray-200 p-1">
             <DropdownMenuLabel className="p-3">
               <div className="flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-gradient-to-br from-indigo-400 to-indigo-600 text-white text-sm font-bold">
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback className="bg-emerald-500 text-white text-xs font-semibold">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col space-y-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{user?.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-                  <span className={`inline-flex self-start items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${getRoleBadgeColor(user?.role)}`}>
-                    {user?.role}
-                  </span>
+                <div className="flex flex-col min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{user?.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                 </div>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/settings" className="flex items-center justify-between cursor-pointer rounded-lg">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Profile
-                </div>
-                <span className="text-[10px] text-muted-foreground font-mono">&#8984;P</span>
+              <Link href="/settings" className="flex items-center gap-2 cursor-pointer rounded-md text-gray-700">
+                <User className="h-4 w-4" />
+                Profile
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/settings" className="flex items-center justify-between cursor-pointer rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </div>
-                <span className="text-[10px] text-muted-foreground font-mono">&#8984;,</span>
+              <Link href="/settings" className="flex items-center gap-2 cursor-pointer rounded-md text-gray-700">
+                <Settings className="h-4 w-4" />
+                Settings
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => signOut({ callbackUrl: "/login" })}
-              className="text-red-600 focus:text-red-600 cursor-pointer rounded-lg"
+              className="text-red-600 focus:text-red-600 cursor-pointer rounded-md"
             >
               <LogOut className="h-4 w-4 mr-2" />
               Sign out

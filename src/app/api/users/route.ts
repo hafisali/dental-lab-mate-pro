@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET() {
   try {
@@ -11,13 +12,20 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const user = session.user as any;
     if (!["ADMIN", "LAB_OWNER"].includes(user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const users = await prisma.user.findMany({
-      where: { labId: user.labId },
+      where: { ...getTenantWhere(labId) },
       select: {
         id: true,
         email: true,
@@ -44,6 +52,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    let labId: string;
+    try {
+      labId = requireLabId(session);
+    } catch {
+      return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
+    }
+
     const currentUser = session.user as any;
     if (!["ADMIN", "LAB_OWNER"].includes(currentUser.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -68,7 +83,7 @@ export async function POST(req: NextRequest) {
         name: body.name,
         role: body.role || "RECEPTION",
         phone: body.phone || null,
-        labId: currentUser.labId,
+        labId,
       },
       select: {
         id: true,
