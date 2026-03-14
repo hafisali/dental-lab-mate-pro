@@ -10,16 +10,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Only ADMIN and LAB_OWNER can see all activity
+    // Only LAB_OWNER can see activity logs
     const role = (session.user as any).role;
-    const isAdmin = role === "ADMIN" || role === "LAB_OWNER";
+    if (role !== "LAB_OWNER") {
+      return NextResponse.json({ error: "Access denied. Only the owner can view activity logs." }, { status: 403 });
+    }
 
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
     const skip = (page - 1) * limit;
 
-    const where = isAdmin ? {} : { email: session.user.email! };
+    const where = {};
 
     const [activities, total] = await Promise.all([
       prisma.loginActivity.findMany({
