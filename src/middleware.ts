@@ -8,6 +8,7 @@ export default withAuth(
 
     // Role-based route protection
     const roleRoutes: Record<string, string[]> = {
+      "/superadmin": ["SUPERADMIN"],
       "/settings": ["ADMIN", "LAB_OWNER"],
       "/inventory": ["ADMIN", "LAB_OWNER"],
     };
@@ -38,5 +39,6 @@ export const config = {
     "/technician/:path*",
     "/settings/:path*",
     "/notifications/:path*",
+    "/superadmin/:path*",
   ],
 };

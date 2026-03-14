@@ -21,6 +21,7 @@ import {
   DollarSign,
   BarChart3,
   MessageCircle,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,35 +40,41 @@ interface SidebarProps {
 
 const menuSections = [
   {
+    label: "PLATFORM",
+    items: [
+      { href: "/superadmin", label: "Platform Control", icon: Shield, roles: ["SUPERADMIN"], highlight: true },
+    ],
+  },
+  {
     label: "MAIN",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["ADMIN", "LAB_OWNER", "RECEPTION", "TECHNICIAN", "DENTIST"] },
-      { href: "/cases", label: "Cases", icon: FolderOpen, roles: ["ADMIN", "LAB_OWNER", "RECEPTION", "TECHNICIAN", "DENTIST"] },
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION", "TECHNICIAN", "DENTIST"] },
+      { href: "/cases", label: "Cases", icon: FolderOpen, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION", "TECHNICIAN", "DENTIST"] },
     ],
   },
   {
     label: "MANAGEMENT",
     items: [
-      { href: "/dentists", label: "Dentists", icon: Users, roles: ["ADMIN", "LAB_OWNER", "RECEPTION"] },
-      { href: "/patients", label: "Patients", icon: UserCircle, roles: ["ADMIN", "LAB_OWNER", "RECEPTION", "DENTIST"] },
-      { href: "/billing", label: "Billing", icon: Receipt, roles: ["ADMIN", "LAB_OWNER", "RECEPTION"] },
-      { href: "/inventory", label: "Inventory", icon: Package, roles: ["ADMIN", "LAB_OWNER"] },
+      { href: "/dentists", label: "Dentists", icon: Users, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION"] },
+      { href: "/patients", label: "Patients", icon: UserCircle, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION", "DENTIST"] },
+      { href: "/billing", label: "Billing", icon: Receipt, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION"] },
+      { href: "/inventory", label: "Inventory", icon: Package, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER"] },
     ],
   },
   {
     label: "TOOLS",
     items: [
-      { href: "/cashflow", label: "Cash Flow", icon: DollarSign, roles: ["ADMIN", "LAB_OWNER"] },
-      { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["ADMIN", "LAB_OWNER", "RECEPTION"] },
-      { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: ["ADMIN", "LAB_OWNER", "RECEPTION"] },
+      { href: "/cashflow", label: "Cash Flow", icon: DollarSign, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER"] },
+      { href: "/analytics", label: "Analytics", icon: BarChart3, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION"] },
+      { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION"] },
     ],
   },
   {
     label: "WORKSPACE",
     items: [
-      { href: "/technician", label: "Technician Panel", icon: Wrench, roles: ["ADMIN", "LAB_OWNER", "TECHNICIAN"] },
-      { href: "/notifications", label: "Notifications", icon: Bell, roles: ["ADMIN", "LAB_OWNER", "RECEPTION", "TECHNICIAN", "DENTIST"] },
-      { href: "/settings", label: "Settings", icon: Settings, roles: ["ADMIN", "LAB_OWNER"] },
+      { href: "/technician", label: "Technician Panel", icon: Wrench, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "TECHNICIAN"] },
+      { href: "/notifications", label: "Notifications", icon: Bell, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER", "RECEPTION", "TECHNICIAN", "DENTIST"] },
+      { href: "/settings", label: "Settings", icon: Settings, roles: ["SUPERADMIN", "ADMIN", "LAB_OWNER"] },
     ],
   },
 ];
@@ -158,9 +165,10 @@ export default function Sidebar({ collapsed, onToggle, userRole }: SidebarProps)
                   <div className="mx-auto w-6 border-t border-white/[0.06] mb-2" />
                 )}
                 <div className="space-y-0.5">
-                  {section.items.map((item) => {
+                  {section.items.map((item: any) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
                     const Icon = item.icon;
+                    const isHighlight = item.highlight;
 
                     const linkContent = (
                       <Link
@@ -168,9 +176,13 @@ export default function Sidebar({ collapsed, onToggle, userRole }: SidebarProps)
                         href={item.href}
                         className={cn(
                           "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 group relative",
-                          isActive
-                            ? "bg-indigo-500/15 text-indigo-300"
-                            : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200",
+                          isHighlight
+                            ? isActive
+                              ? "bg-gradient-to-r from-red-500/20 to-orange-500/20 text-orange-300 border border-orange-500/30"
+                              : "bg-gradient-to-r from-red-500/10 to-orange-500/10 text-orange-400 hover:from-red-500/20 hover:to-orange-500/20 border border-orange-500/20"
+                            : isActive
+                              ? "bg-indigo-500/15 text-indigo-300"
+                              : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200",
                           collapsed && "justify-center px-2"
                         )}
                       >

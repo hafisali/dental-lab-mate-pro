@@ -9,6 +9,7 @@ datasource db {
 }
 
 enum Role {
+  SUPERADMIN
   ADMIN
   LAB_OWNER
   RECEPTION
@@ -101,14 +102,18 @@ model Session {
 }
 
 model Lab {
-  id        String          @id @default(cuid())
-  name      String
-  address   String?
-  phone     String?
-  email     String?
-  logo      String?
-  currency  String          @default("INR")
-  taxRate   Float           @default(0)
+  id            String          @id @default(cuid())
+  name          String
+  address       String?
+  phone         String?
+  email         String?
+  logo          String?
+  currency      String          @default("INR")
+  taxRate       Float           @default(0)
+  plan          String          @default("trial")
+  planExpiresAt DateTime?
+  maxUsers      Int             @default(5)
+  isActive      Boolean         @default(true)
   users     User[]
   branches  Branch[]
   dentists  Dentist[]
