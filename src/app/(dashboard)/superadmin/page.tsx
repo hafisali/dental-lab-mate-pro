@@ -795,13 +795,17 @@ export default function SuperAdminPage() {
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.05 }}
-                            className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
+                            className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer group"
+                            onClick={() => {
+                              setActiveTab("subscriptions");
+                              setSearchQuery(signup.name);
+                            }}
                           >
-                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 group-hover:scale-105 transition-transform">
                               {signup.name.charAt(0)}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">
+                              <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
                                 {signup.name}
                               </p>
                               <p className="text-[11px] text-muted-foreground truncate">
@@ -929,16 +933,17 @@ export default function SuperAdminPage() {
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
                               transition={{ delay: i * 0.02 }}
-                              className="border-b border-border/30 hover:bg-accent/50 transition-colors duration-150 group"
+                              className="border-b border-border/30 hover:bg-accent/50 transition-colors duration-150 group cursor-pointer"
+                              onClick={() => setEditingLab(lab)}
                             >
                               {/* Lab info */}
                               <td className="p-4 pl-6">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm">
+                                  <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
                                     {lab.name.charAt(0)}
                                   </div>
                                   <div className="min-w-0">
-                                    <p className="text-sm font-medium text-foreground truncate max-w-[180px]">
+                                    <p className="text-sm font-medium text-foreground truncate max-w-[180px] group-hover:text-primary transition-colors">
                                       {lab.name}
                                     </p>
                                     <p className="text-[11px] text-muted-foreground truncate max-w-[180px]">

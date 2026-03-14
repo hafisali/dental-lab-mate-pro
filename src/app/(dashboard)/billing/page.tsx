@@ -240,10 +240,17 @@ export default function BillingPage() {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -8 }}
                           transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.3) }}
-                          className="group border-b border-border/20 hover:bg-accent/40 transition-colors duration-150"
+                          className="group border-b border-border/20 hover:bg-accent/40 transition-colors duration-150 cursor-pointer"
+                          onClick={() => inv.case?.id && (window.location.href = `/cases/${inv.case.id}`)}
                         >
                           <TableCell className="pl-6">
-                            <span className="font-semibold text-sm text-foreground">{inv.invoiceNumber}</span>
+                            {inv.case?.id ? (
+                              <Link href={`/cases/${inv.case.id}`} className="font-semibold text-sm text-foreground hover:text-primary transition-colors" onClick={(e) => e.stopPropagation()}>
+                                {inv.invoiceNumber}
+                              </Link>
+                            ) : (
+                              <span className="font-semibold text-sm text-foreground">{inv.invoiceNumber}</span>
+                            )}
                           </TableCell>
                           <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{formatDate(inv.createdAt)}</TableCell>
                           <TableCell>
@@ -374,10 +381,11 @@ export default function BillingPage() {
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.3) }}
-                        className="group border-b border-border/20 hover:bg-accent/40 transition-colors duration-150"
+                        className="group border-b border-border/20 hover:bg-accent/40 transition-colors duration-150 cursor-pointer"
+                        onClick={() => window.location.href = `/dentists/${d.id}`}
                       >
                         <TableCell className="pl-6">
-                          <Link href={`/dentists/${d.id}`} className="flex items-center gap-3">
+                          <Link href={`/dentists/${d.id}`} className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ring-2 ring-white/10">
                               {getInitials(d.name || "D")}
                             </div>

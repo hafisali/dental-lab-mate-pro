@@ -5,12 +5,25 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Bell, CheckCheck, Info, AlertTriangle, DollarSign, FolderOpen, MessageCircle, Inbox } from "lucide-react";
+import { Bell, CheckCheck, Info, AlertTriangle, DollarSign, FolderOpen, MessageCircle, Inbox, ExternalLink } from "lucide-react";
 import { getRelativeTime } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { GlassCard } from "@/components/shared/glass-card";
 import toast from "react-hot-toast";
+
+function getNotificationLink(n: any): string | null {
+  // Try to extract a link from the notification data
+  if (n.caseId) return `/cases/${n.caseId}`;
+  if (n.dentistId) return `/dentists/${n.dentistId}`;
+  if (n.patientId) return `/patients/${n.patientId}`;
+  // Infer from type
+  if (n.type === "case") return "/cases";
+  if (n.type === "payment") return "/billing";
+  if (n.type === "whatsapp") return "/whatsapp";
+  return null;
+}
 
 const typeIcons: Record<string, any> = {
   info: Info,
@@ -44,6 +57,7 @@ function getDateGroup(dateStr: string): string {
 }
 
 export default function NotificationsPage() {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -194,7 +208,11 @@ export default function NotificationsPage() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25, delay: groupIndex * 0.1 + index * 0.04 }}
-                      onClick={() => !n.read && markRead(n.id)}
+                      onClick={() => {
+                        if (!n.read) markRead(n.id);
+                        const link = getNotificationLink(n);
+                        if (link) router.push(link);
+                      }}
                       className={`group flex items-start gap-4 p-4 rounded-2xl border transition-all duration-200 cursor-pointer ${
                         !n.read
                           ? "border-primary/20 bg-primary/[0.03] dark:bg-primary/[0.06] hover:bg-primary/[0.06] dark:hover:bg-primary/[0.1] shadow-sm"
@@ -217,9 +235,14 @@ export default function NotificationsPage() {
                           <p className={`text-sm leading-tight ${!n.read ? "font-bold text-foreground" : "font-medium text-muted-foreground"}`}>
                             {n.title}
                           </p>
-                          <span className="text-[10px] text-muted-foreground/60 font-medium whitespace-nowrap shrink-0 mt-0.5">
-                            {getRelativeTime(n.createdAt)}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                            <span className="text-[10px] text-muted-foreground/60 font-medium whitespace-nowrap">
+                              {getRelativeTime(n.createdAt)}
+                            </span>
+                            {getNotificationLink(n) && (
+                              <ExternalLink className="h-3 w-3 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                            )}
+                          </div>
                         </div>
                         <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{n.message}</p>
                       </div>

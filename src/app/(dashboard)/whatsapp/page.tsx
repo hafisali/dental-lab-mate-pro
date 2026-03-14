@@ -28,6 +28,7 @@ import {
   CheckCheck,
   ArrowRight,
 } from "lucide-react";
+import Link from "next/link";
 import { getWhatsAppUrl, messageTemplates } from "@/lib/whatsapp";
 import { formatDateTime, formatCurrency, getInitials, getRelativeTime } from "@/lib/utils";
 import { PageHeader } from "@/components/shared/page-header";
@@ -468,9 +469,13 @@ export default function WhatsAppPage() {
                 {selectedDentist ? getInitials(selectedDentist.name) : "?"}
               </div>
               <div>
-                <h3 className="text-sm font-bold text-foreground">
-                  {selectedDentist?.name || "Select a contact"}
-                </h3>
+                {selectedDentist ? (
+                  <Link href={`/dentists/${selectedDentist.id}`} className="text-sm font-bold text-foreground hover:text-primary transition-colors">
+                    {selectedDentist.name}
+                  </Link>
+                ) : (
+                  <h3 className="text-sm font-bold text-foreground">Select a contact</h3>
+                )}
                 <p className="text-xs text-muted-foreground">
                   {selectedDentist ? (selectedDentist.whatsapp || selectedDentist.phone || "No phone") : "Choose a dentist to start messaging"}
                 </p>
@@ -684,7 +689,9 @@ export default function WhatsAppPage() {
                     {initials}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{d.name}</p>
+                    <Link href={`/dentists/${d.id}`} className="text-sm font-semibold text-foreground hover:text-primary transition-colors truncate block" onClick={(e) => e.stopPropagation()}>
+                      {d.name}
+                    </Link>
                     {d.clinicName && (
                       <p className="text-xs text-muted-foreground truncate">{d.clinicName}</p>
                     )}
