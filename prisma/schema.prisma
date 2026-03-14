@@ -359,3 +359,19 @@ model OtpCode {
   @@index([email])
   @@index([code])
 }
+
+model LoginActivity {
+  id        String   @id @default(cuid())
+  email     String
+  userId    String?
+  userName  String?
+  action    String   // "LOGIN_SUCCESS", "LOGIN_FAILED", "REGISTER", "OTP_VERIFIED", "LOGOUT"
+  ipAddress String?
+  userAgent String?
+  details   String?  // Additional info like "Invalid password", "Email not verified"
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([action])
+}

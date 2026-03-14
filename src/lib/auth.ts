@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import prisma from "./prisma";
 import bcrypt from "bcryptjs";
+import { logActivity } from "./activity-logger";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -23,21 +24,27 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user || !user.password) {
+          await logActivity({ email: credentials.email, action: "LOGIN_FAILED", details: "User not found" });
           throw new Error("Invalid email or password");
         }
 
         if (!user.emailVerified) {
+          await logActivity({ email: credentials.email, userId: user.id, userName: user.name, action: "LOGIN_FAILED", details: "Email not verified" });
           throw new Error("Please verify your email first");
         }
 
         if (!user.active) {
+          await logActivity({ email: credentials.email, userId: user.id, userName: user.name, action: "LOGIN_FAILED", details: "Account deactivated" });
           throw new Error("Your account has been deactivated");
         }
 
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) {
+          await logActivity({ email: credentials.email, userId: user.id, userName: user.name, action: "LOGIN_FAILED", details: "Invalid password" });
           throw new Error("Invalid email or password");
         }
+
+        await logActivity({ email: user.email, userId: user.id, userName: user.name, action: "LOGIN_SUCCESS" });
 
         return {
           id: user.id,

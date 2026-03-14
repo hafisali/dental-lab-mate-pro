@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { logActivity } from "@/lib/activity-logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,6 +46,18 @@ export async function POST(req: NextRequest) {
         code: otp,
         expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
       },
+    });
+
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+    const ua = req.headers.get("user-agent") || "unknown";
+
+    await logActivity({
+      email,
+      userId: user.id,
+      userName: name,
+      action: "REGISTER",
+      ipAddress: ip,
+      userAgent: ua,
     });
 
     // Try to send email via Resend, but also return OTP for development

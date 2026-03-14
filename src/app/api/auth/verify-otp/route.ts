@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { logActivity } from "@/lib/activity-logger";
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,6 +34,16 @@ export async function POST(req: NextRequest) {
     await prisma.user.update({
       where: { email },
       data: { emailVerified: new Date() },
+    });
+
+    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+    const ua = req.headers.get("user-agent") || "unknown";
+
+    await logActivity({
+      email,
+      action: "OTP_VERIFIED",
+      ipAddress: ip,
+      userAgent: ua,
     });
 
     return NextResponse.json({ message: "Email verified successfully!" });
