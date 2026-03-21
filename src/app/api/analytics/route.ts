@@ -149,22 +149,23 @@ export async function GET(req: NextRequest) {
     }
 
     // Monthly case volumes (last 6 months)
-    const monthlyCaseVolumes = [];
-    for (let i = 5; i >= 0; i--) {
-      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      const monthName = monthStart.toLocaleString("en-IN", { month: "short" });
-      const year = monthStart.getFullYear();
+    // Optimization: Run count queries in parallel to reduce sequential database round-trips
+    const monthlyCaseVolumes = await Promise.all(
+      Array.from({ length: 6 }, (_, i) => {
+        const index = 5 - i;
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - index, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - index + 1, 1);
+        const monthName = monthStart.toLocaleString("en-IN", { month: "short" });
+        const year = monthStart.getFullYear();
 
-      const count = await prisma.case.count({
-        where: {
-          labId,
-          date: { gte: monthStart, lt: monthEnd },
-        },
-      });
-
-      monthlyCaseVolumes.push({ month: monthName, year, count });
-    }
+        return prisma.case.count({
+          where: {
+            labId,
+            date: { gte: monthStart, lt: monthEnd },
+          },
+        }).then(count => ({ month: monthName, year, count }));
+      })
+    );
 
     // Top dentists by case count and revenue
     const topDentists = await prisma.dentist.findMany({
@@ -188,37 +189,45 @@ export async function GET(req: NextRequest) {
     }));
 
     // Technician workload
+    // Optimization: Resolve N+1 query problem by using groupBy to fetch counts for all technicians in one query
     const allTechnicians = await prisma.user.findMany({
       where: { labId, role: "TECHNICIAN", active: true },
       select: { id: true, name: true },
     });
 
-    const techWorkload = await Promise.all(
-      allTechnicians.map(async (tech) => {
-        const [activeCases, completedCases] = await Promise.all([
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { notIn: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { in: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-        ]);
-        return {
-          id: tech.id,
-          name: tech.name,
-          activeCases,
-          completedCases,
-        };
-      })
-    );
+    const techCaseCounts = await prisma.case.groupBy({
+      by: ["technicianId", "status"],
+      where: {
+        labId,
+        technicianId: { in: allTechnicians.map((t) => t.id) },
+      },
+      _count: { id: true },
+    });
+
+    const techWorkload = allTechnicians.map((tech) => {
+      const activeCases = techCaseCounts
+        .filter(
+          (c) =>
+            c.technicianId === tech.id &&
+            !["FINISHED", "DELIVERED"].includes(c.status)
+        )
+        .reduce((sum, c) => sum + c._count.id, 0);
+
+      const completedCases = techCaseCounts
+        .filter(
+          (c) =>
+            c.technicianId === tech.id &&
+            ["FINISHED", "DELIVERED"].includes(c.status)
+        )
+        .reduce((sum, c) => sum + c._count.id, 0);
+
+      return {
+        id: tech.id,
+        name: tech.name,
+        activeCases,
+        completedCases,
+      };
+    });
 
     // Cases this month count
     const casesThisMonth = await prisma.case.count({
