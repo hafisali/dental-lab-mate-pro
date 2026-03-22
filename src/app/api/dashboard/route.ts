@@ -89,26 +89,40 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
+    // Monthly revenue (last 6 months) - Optimized: Single query with in-memory aggregation
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const allPayments = await prisma.payment.findMany({
+      where: {
+        dentist: { ...tenantWhere },
+        date: { gte: sixMonthsAgo },
+      },
+      select: { amount: true, date: true },
+    });
+
     const monthlyRevenue: { month: string; revenue: number }[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0);
+      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
+      const monthLabel = startOfMonth.toLocaleDateString("en-US", {
+        month: "short",
+        year: "2-digit",
       });
 
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
+      const revenue = allPayments
+        .filter((p) => {
+          const pDate = new Date(p.date);
+          return pDate >= startOfMonth && pDate <= endOfMonth;
+        })
+        .reduce((sum, p) => sum + p.amount, 0);
+
+      monthlyRevenue.push({ month: monthLabel, revenue });
     }
 
     return NextResponse.json({
