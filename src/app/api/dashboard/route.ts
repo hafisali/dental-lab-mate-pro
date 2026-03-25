@@ -39,6 +39,10 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    const sixMonthsAgo = new Date(today);
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+
     const [
       todayCases,
       pendingCases,
@@ -47,6 +51,7 @@ export async function GET() {
       statusCounts,
       payments,
       dentistBalances,
+      allPayments,
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
@@ -79,6 +84,17 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      // Optimization: Fetch all payments for the last 6 months in one query to avoid N+1 pattern
+      prisma.payment.findMany({
+        where: {
+          dentist: { ...tenantWhere },
+          date: { gte: sixMonthsAgo },
+        },
+        select: {
+          amount: true,
+          date: true,
+        },
+      }),
     ]);
 
     const totalIncome = payments._sum.amount || 0;
@@ -89,25 +105,25 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
+    // Monthly revenue (last 6 months) - Aggregating in-memory for better performance
     const monthlyRevenue: { month: string; revenue: number }[] = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date();
+      const d = new Date(today);
       d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
+      const monthRevenue = allPayments
+        .filter((p) => {
+          const pDate = new Date(p.date);
+          return (
+            pDate.getMonth() === d.getMonth() &&
+            pDate.getFullYear() === d.getFullYear()
+          );
+        })
+        .reduce((sum, p) => sum + p.amount, 0);
 
       monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
+        month: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        revenue: monthRevenue,
       });
     }
 
