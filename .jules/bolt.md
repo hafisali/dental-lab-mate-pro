@@ -1,0 +1,3 @@
+## 2025-05-15 - [Eliminate N+1 Queries in Dashboard and Analytics]
+**Learning:** Sequential database queries in loops (N+1 patterns) significantly impact API latency, especially as the number of entities (like technicians or months) grows. Using `Promise.all` for parallel execution or `groupBy` for batch aggregation drastically improves performance by reducing database round-trips.
+**Action:** Always scan for `await` calls inside loops or repeated `count`/`aggregate` calls for different categories of the same entity. Replace them with bulk fetches (`findMany`), grouping (`groupBy`), or parallelization (`Promise.all`).
