@@ -1,0 +1,3 @@
+## 2025-05-15 - Prisma Version and Batching Patterns
+**Learning:** This codebase uses Prisma 6.19.2. Running `npx prisma` defaults to the latest version (v7+), which introduced breaking changes in schema validation (P1012) regarding the `url` property in `datasource`. Using the local `./node_modules/.bin/prisma` is mandatory. Additionally, the N+1 query pattern was identified in several analytics routes where sequential counts were performed in loops.
+**Action:** Always use the pinned Prisma version from `package.json` for validation and generation. Prefer `Promise.all` for parallel counts and `prisma.groupBy` for aggregating related data (like technician workload or dentist revenue) in a single database round-trip.
