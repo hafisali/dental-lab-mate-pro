@@ -39,6 +39,12 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Optimized: Calculate start of 6-month period once for batch fetching
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
     const [
       todayCases,
       pendingCases,
@@ -47,6 +53,7 @@ export async function GET() {
       statusCounts,
       payments,
       dentistBalances,
+      sixMonthPayments, // Optimized: Batch fetch all payments for the revenue chart
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
@@ -79,6 +86,13 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      prisma.payment.findMany({
+        where: {
+          dentist: { ...tenantWhere },
+          date: { gte: sixMonthsAgo },
+        },
+        select: { amount: true, date: true },
+      }),
     ]);
 
     const totalIncome = payments._sum.amount || 0;
@@ -89,7 +103,7 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
+    // Optimized: In-memory aggregation of monthly revenue to avoid N+1 database queries
     const monthlyRevenue: { month: string; revenue: number }[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
@@ -97,17 +111,13 @@ export async function GET() {
       const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
       const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
+      const revenueForMonth = sixMonthPayments
+        .filter((p) => p.date >= startOfMonth && p.date <= endOfMonth)
+        .reduce((sum, p) => sum + p.amount, 0);
 
       monthlyRevenue.push({
         month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
+        revenue: revenueForMonth,
       });
     }
 
