@@ -47,6 +47,7 @@ export async function GET() {
       statusCounts,
       payments,
       dentistBalances,
+      monthlyRevenue, // Optimized: parallelized below
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
@@ -79,6 +80,29 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      // Monthly revenue (last 6 months) - Optimized: parallelized
+      Promise.all(
+        Array.from({ length: 6 }).map(async (_, i) => {
+          const monthIdx = 5 - i;
+          const d = new Date();
+          d.setMonth(d.getMonth() - monthIdx);
+          const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+          const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+
+          const monthPayments = await prisma.payment.aggregate({
+            where: {
+              dentist: { ...tenantWhere },
+              date: { gte: startOfMonth, lte: endOfMonth },
+            },
+            _sum: { amount: true },
+          });
+
+          return {
+            month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+            revenue: monthPayments._sum.amount || 0,
+          };
+        })
+      ),
     ]);
 
     const totalIncome = payments._sum.amount || 0;
@@ -88,28 +112,6 @@ export async function GET() {
       status: s.status,
       count: s._count.status,
     }));
-
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
 
     return NextResponse.json({
       todayCases,
