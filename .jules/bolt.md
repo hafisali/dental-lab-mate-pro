@@ -1,0 +1,3 @@
+## 2025-05-15 - [API Query Optimization]
+**Learning:** Found sequential `await` patterns in analytics and dashboard routes where independent metrics were fetched one-by-one. Also identified N+1 query patterns in technician workload and top dentist revenue calculations.
+**Action:** Use `Promise.all` to parallelize independent top-level queries and use Prisma's `groupBy` and `_sum` aggregations to offload calculations to the database instead of fetching individual records for in-memory reduction. Ensure `npx prisma generate` is run before builds to keep the client in sync with schema optimizations.
