@@ -1,0 +1,3 @@
+## 2025-05-14 - Dashboard Query Parallelization
+**Learning:** Sequential database queries for monthly revenue aggregates in the dashboard API were causing unnecessary latency proportional to the number of months. Additionally, redundant count queries for specific case statuses were being performed even though a `groupBy` query on status was already available.
+**Action:** Always parallelize independent aggregate queries using `Promise.all` and derive specific status-based counts in-memory from a single `groupBy` result to minimize database roundtrips and improve response times for analytics-heavy endpoints.
