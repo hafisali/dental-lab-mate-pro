@@ -187,38 +187,39 @@ export async function GET(req: NextRequest) {
       revenue: d.cases.reduce((sum, c) => sum + c.amount, 0),
     }));
 
-    // Technician workload
+    // Technician workload optimization: Replace N+1 queries with a single groupBy
     const allTechnicians = await prisma.user.findMany({
       where: { labId, role: "TECHNICIAN", active: true },
       select: { id: true, name: true },
     });
 
-    const techWorkload = await Promise.all(
-      allTechnicians.map(async (tech) => {
-        const [activeCases, completedCases] = await Promise.all([
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { notIn: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { in: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-        ]);
-        return {
-          id: tech.id,
-          name: tech.name,
-          activeCases,
-          completedCases,
-        };
-      })
-    );
+    const technicianIds = allTechnicians.map((t) => t.id);
+
+    const techCaseStats = await prisma.case.groupBy({
+      by: ["technicianId", "status"],
+      where: {
+        labId,
+        technicianId: { in: technicianIds },
+      },
+      _count: { id: true },
+    });
+
+    const techWorkload = allTechnicians.map((tech) => {
+      const techStats = techCaseStats.filter((s) => s.technicianId === tech.id);
+      const activeCases = techStats
+        .filter((s) => !["FINISHED", "DELIVERED"].includes(s.status))
+        .reduce((sum, s) => sum + s._count.id, 0);
+      const completedCases = techStats
+        .filter((s) => ["FINISHED", "DELIVERED"].includes(s.status))
+        .reduce((sum, s) => sum + s._count.id, 0);
+
+      return {
+        id: tech.id,
+        name: tech.name,
+        activeCases,
+        completedCases,
+      };
+    });
 
     // Cases this month count
     const casesThisMonth = await prisma.case.count({
