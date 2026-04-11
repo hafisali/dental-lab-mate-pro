@@ -89,27 +89,30 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+    // Monthly revenue (last 6 months) - Optimized to run in parallel
+    // Reduces 6 sequential database round-trips to a single concurrent set
+    const months = Array.from({ length: 6 }, (_, i) => 5 - i);
+    const monthlyRevenue = await Promise.all(
+      months.map(async (i) => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+        const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
+        const monthPayments = await prisma.payment.aggregate({
+          where: {
+            dentist: { ...tenantWhere },
+            date: { gte: startOfMonth, lte: endOfMonth },
+          },
+          _sum: { amount: true },
+        });
 
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
+        return {
+          month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+          revenue: monthPayments._sum.amount || 0,
+        };
+      })
+    );
 
     return NextResponse.json({
       todayCases,
