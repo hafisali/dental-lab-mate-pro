@@ -1,0 +1,3 @@
+## 2026-04-17 - Performance Bottlenecks in Analytics Dashboard
+**Learning:** Found significant performance anti-patterns in `src/app/api/analytics/route.ts`: sequential `await` calls for independent queries, an N+1 query pattern in technician workload calculations, and inefficient in-memory aggregation of large datasets (dentist revenue).
+**Action:** Always parallelize independent database queries using `Promise.all`. Use Prisma `groupBy` for database-level aggregations instead of fetching full records for in-memory summing. Prefer single bulk queries with in-memory filtering over repeated database calls in loops.
