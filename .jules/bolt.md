@@ -1,0 +1,3 @@
+## 2025-05-14 - Sequential Analytics Queries and N+1 Patterns
+**Learning:** The `src/app/api/analytics/route.ts` endpoint was performing over 20 sequential database queries, including loops for monthly volumes and technician workloads. This leads to high latency as the number of technicians or the time range increases. Additionally, calculating revenue in-memory by fetching all case records is inefficient compared to database-level aggregation.
+**Action:** Use `Promise.all` to parallelize independent queries. Replace loops with `groupBy` aggregations where possible to minimize database round-trips and memory usage. Add indexes to frequently filtered fields like `dueDate` and `date`.
