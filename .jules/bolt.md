@@ -1,0 +1,3 @@
+## 2025-05-14 - [Database-level Filtering for Column Comparisons]
+**Learning:** Prisma's standard 'where' clause does not natively support comparing two columns (e.g., "stock" <= "minStock"). Fetching all records and filtering in-memory is an O(N) operation that wastes database bandwidth and memory as the dataset grows.
+**Action:** Use a lightweight 'prisma.$queryRaw' to fetch only matching IDs at the database level, then use those IDs in a subsequent 'findMany' to fetch full objects and relations. This hybrid approach maintains type safety for relations while ensuring efficient data retrieval.

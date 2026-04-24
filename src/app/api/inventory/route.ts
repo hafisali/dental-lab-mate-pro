@@ -31,6 +31,17 @@ export async function GET(req: NextRequest) {
       ];
     }
 
+    // Optimization: Filter low stock items at the database level.
+    // Since Prisma doesn't support comparing two columns in 'where', we use a raw query
+    // to get the IDs of low-stock items and then use them in the findMany query.
+    if (lowStock === "true") {
+      const lowStockIds = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "InventoryItem"
+        WHERE "labId" = ${labId} AND "stock" <= "minStock"
+      `;
+      where.id = { in: lowStockIds.map((item) => item.id) };
+    }
+
     const items = await prisma.inventoryItem.findMany({
       where,
       orderBy: { name: "asc" },
@@ -39,11 +50,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const result = lowStock === "true"
-      ? items.filter((item) => item.stock <= item.minStock)
-      : items;
-
-    return NextResponse.json(result);
+    return NextResponse.json(items);
   } catch (error) {
     console.error("Inventory GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
