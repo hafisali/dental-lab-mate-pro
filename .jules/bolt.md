@@ -1,0 +1,3 @@
+## 2026-05-04 - [Analytics API Optimization]
+**Learning:** The Analytics API was suffering from a massive N+1 query pattern and sequential execution bottleneck. Every technician required 2 separate count queries, and monthly volumes were fetched in a serial loop. Additionally, "Top Dentists" revenue was being calculated by fetching all related case records into memory.
+**Action:** Use `prisma.case.groupBy` to aggregate metrics (revenue, case counts) at the database level. Parallelize all independent queries using `Promise.all` to reduce total request latency from O(N) to O(1) database round-trip phases. Use `Map` for O(1) in-memory lookups when merging aggregated stats with entity details.
