@@ -1,0 +1,4 @@
+## 2025-05-14 - [Analytics API Optimization]
+**Learning:** Sequential `await` calls in analytics/dashboard routes are a major bottleneck. Parallelizing ~14 independent Prisma queries (including 6-month time-series) into a single `Promise.all` block significantly reduces latency. Additionally, N+1 query patterns (e.g., counting cases per technician in a loop) can be replaced with a single `prisma.case.groupBy` call combined with in-memory `Map` lookups for O(1) merging.
+
+**Action:** Always scan for loops containing `await` or repeated counts/sums. Use `groupBy` for aggregations and parallelize all independent data fetches into a single `Promise.all` at the start of the route. Use explicit interfaces and `as unknown as Promise<T[]>` to satisfy ESLint `@typescript-eslint/no-explicit-any` when working with Prisma's dynamic `groupBy` return types.
