@@ -1,0 +1,3 @@
+## 2025-05-14 - [Analytics API Optimization]
+**Learning:** Sequential database queries and N+1 counting patterns in analytics endpoints create significant latency. Prisma's `groupBy` combined with `Promise.all` can consolidate dozens of queries into a few parallelized requests. Additionally, resolving metadata for grouped IDs is most efficient via a single `findMany` with an `in` filter rather than multiple `findUnique` calls.
+**Action:** Always favor a 2-layer parallelization architecture for complex dashboards: Layer 1 for bulk data and aggregations, Layer 2 for resolving names and relations for the identified top entities.
