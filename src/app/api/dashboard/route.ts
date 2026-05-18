@@ -47,6 +47,7 @@ export async function GET() {
       statusCounts,
       payments,
       dentistBalances,
+      monthlyRevenueResults,
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
@@ -79,6 +80,31 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      // Monthly revenue (last 6 months) parallelized
+      Promise.all(
+        Array.from({ length: 6 }, (_, i) => 5 - i).map(async (monthsAgo) => {
+          const d = new Date();
+          // Always set to 1st to avoid 31st of month skip bug
+          d.setDate(1);
+          d.setMonth(d.getMonth() - monthsAgo);
+
+          const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+          const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+
+          const monthPayments = await prisma.payment.aggregate({
+            where: {
+              dentist: { ...tenantWhere },
+              date: { gte: startOfMonth, lte: endOfMonth },
+            },
+            _sum: { amount: true },
+          });
+
+          return {
+            month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+            revenue: monthPayments._sum.amount || 0,
+          };
+        })
+      ),
     ]);
 
     const totalIncome = payments._sum.amount || 0;
@@ -89,28 +115,6 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
-
     return NextResponse.json({
       todayCases,
       pendingCases,
@@ -119,7 +123,7 @@ export async function GET() {
       totalBalance,
       recentCases,
       statusBreakdown,
-      monthlyRevenue,
+      monthlyRevenue: monthlyRevenueResults,
     });
   } catch (error) {
     console.error("Dashboard error:", error);
