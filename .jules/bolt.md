@@ -1,0 +1,3 @@
+## 2025-05-15 - [Analytics API Optimization]
+**Learning:** Sequential database queries in App Router API routes (specifically for analytics dashboards) are a major performance bottleneck. In this codebase, the `analytics/route.ts` was executing over 20 sequential `await` calls for a single request, including nested counts for each technician.
+**Action:** Always parallelize independent top-level database queries using `Promise.all`. For workload/volume aggregations, replace per-entity count queries with a single `groupBy` and use a `Map` for O(1) correlation in post-processing. Use `as unknown as Promise<Interface[]>` to satisfy strict ESLint rules when handling Prisma `groupBy` results.
