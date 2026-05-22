@@ -1,0 +1,3 @@
+## 2025-05-14 - Optimized Analytics API Performance
+**Learning:** Sequential `await` calls in a loop (especially for time-series data or N+1 patterns) are a massive performance bottleneck. In this codebase, `requireLabId` takes a `session` object, not the `NextRequest` object, so removing the `req` parameter from API routes that only use it for the session is safe and satisfies ESLint `no-unused-vars`.
+**Action:** Use `Promise.all` with spread syntax for dynamic queries (like monthly counts) and Prisma `groupBy` for aggregations to minimize database round-trips. Always verify that `requireLabId` gets the `session` object.
