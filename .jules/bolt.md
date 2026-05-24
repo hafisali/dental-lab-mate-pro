@@ -1,0 +1,3 @@
+## 2025-05-14 - [API Optimization]
+**Learning:** Sequential `await` calls for independent database queries and N+1 count patterns in loops significantly degrade API performance. Prisma's `groupBy` and `Promise.all` are powerful tools to consolidate these into concurrent operations. Also, the "31st of the month" date bug is a common trap when calculating historical monthly ranges.
+**Action:** Always check for independent `await` calls that can be parallelized. Use `groupBy` for aggregations instead of multiple counts. When calculating months, set the date to the 1st (`setDate(1)`) before shifting months to avoid skipping months with fewer days.
