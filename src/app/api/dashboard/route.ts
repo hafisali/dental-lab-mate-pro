@@ -4,6 +4,24 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
+interface MonthRevenue {
+  month: string;
+  revenue: number;
+}
+
+interface RevenueStat {
+  _sum: { amount: number | null };
+}
+
+interface BalanceStat {
+  _sum: { balance: number | null };
+}
+
+interface StatusStat {
+  status: string;
+  _count: { status: number };
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -39,6 +57,29 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Prepare monthly revenue promises
+    const revenuePromises: Promise<RevenueStat>[] = [];
+    const revenueLabels: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      // Set to 1st of month to avoid issues when today is 31st
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+
+      revenueLabels.push(startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }));
+      revenuePromises.push(
+        prisma.payment.aggregate({
+          where: {
+            dentist: { ...tenantWhere },
+            date: { gte: startOfMonth, lte: endOfMonth },
+          },
+          _sum: { amount: true },
+        }) as unknown as Promise<RevenueStat>
+      );
+    }
+
     const [
       todayCases,
       pendingCases,
@@ -47,6 +88,7 @@ export async function GET() {
       statusCounts,
       payments,
       dentistBalances,
+      ...monthlyRevenueRaw
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
@@ -70,15 +112,16 @@ export async function GET() {
         by: ["status"],
         where: { ...tenantWhere },
         _count: { status: true },
-      }),
+      }) as unknown as Promise<StatusStat[]>,
       prisma.payment.aggregate({
         where: { dentist: { ...tenantWhere } },
         _sum: { amount: true },
-      }),
+      }) as unknown as Promise<RevenueStat>,
       prisma.dentist.aggregate({
         where: { ...tenantWhere },
         _sum: { balance: true },
-      }),
+      }) as unknown as Promise<BalanceStat>,
+      ...revenuePromises,
     ]);
 
     const totalIncome = payments._sum.amount || 0;
@@ -89,27 +132,10 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
+    const monthlyRevenue: MonthRevenue[] = monthlyRevenueRaw.map((res, i) => ({
+      month: revenueLabels[i],
+      revenue: res._sum.amount || 0,
+    }));
 
     return NextResponse.json({
       todayCases,
