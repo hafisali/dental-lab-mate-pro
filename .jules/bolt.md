@@ -1,0 +1,3 @@
+## 2026-05-29 - [Optimized Analytics API via Parallelization and GroupBy]
+**Learning:** Sequential database queries in analytics endpoints are a significant bottleneck. Using `Promise.all` to parallelize independent queries and replacing N+1 count loops with a single `groupBy` operation significantly improves performance and reduces database round-trips.
+**Action:** Always look for sequential `await` calls in data-heavy API routes and refactor them into parallel execution blocks. Prioritize database-level aggregations (like `groupBy`) over application-level loops for counting or summing related data.
