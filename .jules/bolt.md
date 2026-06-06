@@ -1,0 +1,3 @@
+## 2025-05-15 - [Analytics API Bottlenecks & Chunked Reading]
+**Learning:** Sequential database queries and N+1 patterns in the Analytics API (src/app/api/analytics/route.ts) significantly increase latency. Specifically, technicians workload was being counted per-technician, and monthly volumes were being awaited in a loop. Additionally, agent tool outputs are truncated at 1000 characters, making it difficult to profile large files without chunked reading.
+**Action:** Use a 2-layer `Promise.all` architecture to parallelize independent fetches and subsequent dependent lookups. Utilize `prisma.groupBy` to offload aggregations to the database. Always read large files in non-overlapping chunks (~20 lines) to ensure full visibility during profiling.
