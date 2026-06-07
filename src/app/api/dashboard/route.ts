@@ -39,23 +39,17 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Parallelize all top-level metrics and monthly revenue fetches to reduce database round-trips
     const [
       todayCases,
-      pendingCases,
-      deliveredCases,
       recentCases,
       statusCounts,
       payments,
       dentistBalances,
+      monthlyRevenue,
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: { in: ["RECEIVED", "WORKING", "TRIAL"] } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: "DELIVERED" },
       }),
       prisma.case.findMany({
         where: { ...tenantWhere },
@@ -79,37 +73,44 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      // Parallelize monthly revenue fetches (last 6 months)
+      Promise.all(
+        Array.from({ length: 6 }, (_, index) => {
+          const i = 5 - index;
+          const d = new Date();
+          d.setDate(1); // Avoid month skipping bug on the 31st
+          d.setMonth(d.getMonth() - i);
+          const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+          const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+
+          return prisma.payment.aggregate({
+            where: {
+              dentist: { ...tenantWhere },
+              date: { gte: startOfMonth, lte: endOfMonth },
+            },
+            _sum: { amount: true },
+          }).then(monthPayments => ({
+            month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+            revenue: monthPayments._sum.amount || 0,
+          }));
+        })
+      ),
     ]);
 
     const totalIncome = payments._sum.amount || 0;
     const totalBalance = dentistBalances._sum.balance || 0;
 
+    // Derived metrics from statusCounts to avoid redundant database queries
     const statusBreakdown = statusCounts.map((s) => ({
       status: s.status,
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+    const pendingCases = statusCounts
+      .filter((s) => ["RECEIVED", "WORKING", "TRIAL"].includes(s.status))
+      .reduce((sum, s) => sum + s._count.status, 0);
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
+    const deliveredCases = statusCounts.find((s) => s.status === "DELIVERED")?._count.status || 0;
 
     return NextResponse.json({
       todayCases,
