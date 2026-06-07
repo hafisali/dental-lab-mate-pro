@@ -1,0 +1,3 @@
+## 2025-05-15 - [Dashboard API Parallelization and Metric Derivation]
+**Learning:** Sequential database queries in dashboard/analytics routes are a major bottleneck. Parallelizing with `Promise.all` and deriving multiple metrics (e.g., `pendingCases`, `deliveredCases`) from a single aggregated result (`groupBy`) instead of separate `count` queries significantly improves performance and reduces database load. Additionally, the '31st of the month' date-skipping bug can be avoided by setting the date to the 1st before adjusting the month.
+**Action:** Always refactor loops with sequential `await` calls into `Promise.all` and look for opportunities to derive status-based counts from a single `groupBy` query.
