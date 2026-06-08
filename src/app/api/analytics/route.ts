@@ -187,38 +187,43 @@ export async function GET(req: NextRequest) {
       revenue: d.cases.reduce((sum, c) => sum + c.amount, 0),
     }));
 
-    // Technician workload
+    // Technician workload - optimized to single groupBy query (O(1) database round-trips vs O(N))
     const allTechnicians = await prisma.user.findMany({
       where: { labId, role: "TECHNICIAN", active: true },
       select: { id: true, name: true },
     });
 
-    const techWorkload = await Promise.all(
-      allTechnicians.map(async (tech) => {
-        const [activeCases, completedCases] = await Promise.all([
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { notIn: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { in: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-        ]);
-        return {
-          id: tech.id,
-          name: tech.name,
-          activeCases,
-          completedCases,
-        };
-      })
-    );
+    const techCaseStats = await prisma.case.groupBy({
+      by: ["technicianId", "status"],
+      where: {
+        labId,
+        technicianId: { in: allTechnicians.map((t) => t.id) },
+      },
+      _count: { id: true },
+    });
+
+    const techWorkloadMap = new Map();
+    techCaseStats.forEach((stat) => {
+      const techId = stat.technicianId;
+      if (!techId) return;
+
+      if (!techWorkloadMap.has(techId)) {
+        techWorkloadMap.set(techId, { activeCases: 0, completedCases: 0 });
+      }
+
+      const current = techWorkloadMap.get(techId);
+      if (["FINISHED", "DELIVERED"].includes(stat.status)) {
+        current.completedCases += stat._count.id;
+      } else {
+        current.activeCases += stat._count.id;
+      }
+    });
+
+    const techWorkload = allTechnicians.map((tech) => ({
+      id: tech.id,
+      name: tech.name,
+      ...(techWorkloadMap.get(tech.id) || { activeCases: 0, completedCases: 0 }),
+    }));
 
     // Cases this month count
     const casesThisMonth = await prisma.case.count({
