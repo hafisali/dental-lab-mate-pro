@@ -1,10 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId } from "@/lib/tenant";
 
-export async function GET(req: NextRequest) {
+interface TechStat {
+  technicianId: string | null;
+  status: string;
+  _count: { id: number };
+}
+
+interface CaseSummary {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  dueDate: Date | null;
+}
+
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -30,156 +43,173 @@ export async function GET(req: NextRequest) {
       now.getDate() + 2
     );
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const last6MonthsStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-    // Overdue cases: dueDate < now AND status NOT IN ('FINISHED', 'DELIVERED')
-    const overdueCases = await prisma.case.findMany({
-      where: {
-        labId,
-        dueDate: { lt: todayStart },
-        status: { notIn: ["FINISHED", "DELIVERED"] },
-      },
-      include: {
-        dentist: { select: { id: true, name: true } },
-        patient: { select: { id: true, name: true } },
-      },
-      orderBy: { dueDate: "asc" },
-    });
+    // Prepare promises for parallel execution
+    const monthlyPromises = [];
+    for (let i = 5; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      monthlyPromises.push(
+        prisma.case.count({
+          where: { labId, date: { gte: monthStart, lt: monthEnd } },
+        })
+      );
+    }
 
-    const overdueWithDays = overdueCases.map((c) => {
-      const dueDate = new Date(c.dueDate!);
-      const diffTime = now.getTime() - dueDate.getTime();
-      const daysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return {
-        id: c.id,
-        caseNumber: c.caseNumber,
-        dentist: c.dentist,
-        patient: c.patient,
-        workType: c.workType,
-        dueDate: c.dueDate,
-        status: c.status,
-        daysOverdue,
-      };
-    });
+    const [
+      pendingCases,
+      statusCountsRaw,
+      workTypeCountsRaw,
+      deliveredData,
+      topDentistsRaw,
+      allTechnicians,
+      techWorkloadRaw,
+      casesThisMonth,
+      revenueThisMonthRaw,
+      ...monthlyCounts
+    ] = await Promise.all([
+      // Combined overdue and due soon query
+      prisma.case.findMany({
+        where: {
+          labId,
+          dueDate: { lt: tomorrowEnd },
+          status: { notIn: ["FINISHED", "DELIVERED"] },
+        },
+        include: {
+          dentist: { select: { id: true, name: true } },
+          patient: { select: { id: true, name: true } },
+        },
+        orderBy: { dueDate: "asc" },
+      }),
+      prisma.case.groupBy({
+        by: ["status"],
+        _count: { id: true },
+        where: { labId },
+      }),
+      prisma.case.groupBy({
+        by: ["workType"],
+        _count: { id: true },
+        where: { labId },
+        orderBy: { _count: { id: "desc" } },
+      }),
+      // Combined turnaround and on-time data
+      prisma.case.findMany({
+        where: { labId, status: "DELIVERED" },
+        select: { createdAt: true, updatedAt: true, dueDate: true },
+      }) as unknown as Promise<CaseSummary[]>,
+      prisma.dentist.findMany({
+        where: { labId, active: true },
+        include: {
+          _count: { select: { cases: true } },
+          cases: { select: { amount: true } },
+        },
+        orderBy: { cases: { _count: "desc" } },
+        take: 10,
+      }),
+      prisma.user.findMany({
+        where: { labId, role: "TECHNICIAN", active: true },
+        select: { id: true, name: true },
+      }),
+      // Technician workload optimization: single groupBy instead of N+1
+      prisma.case.groupBy({
+        by: ["technicianId", "status"],
+        _count: { id: true },
+        where: { labId, technicianId: { not: null } },
+      }) as unknown as Promise<TechStat[]>,
+      prisma.case.count({
+        where: { labId, date: { gte: currentMonthStart } },
+      }),
+      prisma.payment.aggregate({
+        _sum: { amount: true },
+        where: { date: { gte: currentMonthStart }, dentist: { labId } },
+      }),
+      ...monthlyPromises,
+    ]);
 
-    // Due soon: cases where dueDate is today or tomorrow
-    const dueSoonCases = await prisma.case.findMany({
-      where: {
-        labId,
-        dueDate: { gte: todayStart, lt: tomorrowEnd },
-        status: { notIn: ["FINISHED", "DELIVERED"] },
-      },
-      include: {
-        dentist: { select: { id: true, name: true } },
-        patient: { select: { id: true, name: true } },
-      },
-      orderBy: { dueDate: "asc" },
-    });
+    // Process pending cases (overdue vs due soon)
+    const overdueCases = [];
+    const dueSoonCases = [];
+    for (const c of pendingCases) {
+      if (!c.dueDate) continue;
+      const dueDate = new Date(c.dueDate);
+      if (dueDate < todayStart) {
+        const diffTime = now.getTime() - dueDate.getTime();
+        const daysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        overdueCases.push({
+          id: c.id,
+          caseNumber: c.caseNumber,
+          dentist: c.dentist,
+          patient: c.patient,
+          workType: c.workType,
+          dueDate: c.dueDate,
+          status: c.status,
+          daysOverdue,
+        });
+      } else {
+        const isToday =
+          dueDate.getDate() === now.getDate() &&
+          dueDate.getMonth() === now.getMonth() &&
+          dueDate.getFullYear() === now.getFullYear();
+        dueSoonCases.push({
+          id: c.id,
+          caseNumber: c.caseNumber,
+          dentist: c.dentist,
+          patient: c.patient,
+          workType: c.workType,
+          dueDate: c.dueDate,
+          status: c.status,
+          dueLabel: isToday ? "Today" : "Tomorrow",
+        });
+      }
+    }
 
-    const dueSoonWithLabel = dueSoonCases.map((c) => {
-      const dueDate = new Date(c.dueDate!);
-      const isToday =
-        dueDate.getDate() === now.getDate() &&
-        dueDate.getMonth() === now.getMonth() &&
-        dueDate.getFullYear() === now.getFullYear();
-      return {
-        id: c.id,
-        caseNumber: c.caseNumber,
-        dentist: c.dentist,
-        patient: c.patient,
-        workType: c.workType,
-        dueDate: c.dueDate,
-        status: c.status,
-        dueLabel: isToday ? "Today" : "Tomorrow",
-      };
-    });
-
-    // Cases by status count
-    const casesByStatus = await prisma.case.groupBy({
-      by: ["status"],
-      _count: { id: true },
-      where: { labId },
-    });
-
-    const statusCounts = casesByStatus.map((s) => ({
+    // Process status and work type counts
+    const statusCounts = statusCountsRaw.map((s) => ({
       status: s.status,
       count: s._count.id,
     }));
-
-    // Cases by work type count
-    const casesByWorkType = await prisma.case.groupBy({
-      by: ["workType"],
-      _count: { id: true },
-      where: { labId },
-      orderBy: { _count: { id: "desc" } },
-    });
-
-    const workTypeCounts = casesByWorkType.map((w) => ({
+    const workTypeCounts = workTypeCountsRaw.map((w) => ({
       workType: w.workType,
       count: w._count.id,
     }));
 
-    // Average turnaround time (avg days from createdAt to updatedAt where status=DELIVERED)
-    const deliveredCases = await prisma.case.findMany({
-      where: { labId, status: "DELIVERED" },
-      select: { createdAt: true, updatedAt: true },
-    });
-
+    // Process turnaround and on-time rate
     let avgTurnaround = 0;
-    if (deliveredCases.length > 0) {
-      const totalDays = deliveredCases.reduce((sum, c) => {
-        const diff = new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime();
-        return sum + diff / (1000 * 60 * 60 * 24);
-      }, 0);
-      avgTurnaround = Math.round((totalDays / deliveredCases.length) * 10) / 10;
-    }
-
-    // On-time delivery rate
-    const deliveredWithDue = await prisma.case.findMany({
-      where: { labId, status: "DELIVERED", dueDate: { not: null } },
-      select: { dueDate: true, updatedAt: true },
-    });
-
     let onTimeRate = 0;
-    if (deliveredWithDue.length > 0) {
-      const onTimeCount = deliveredWithDue.filter(
-        (c) => new Date(c.updatedAt) <= new Date(c.dueDate!)
-      ).length;
-      onTimeRate = Math.round((onTimeCount / deliveredWithDue.length) * 100);
+    if (deliveredData.length > 0) {
+      let totalDays = 0;
+      let onTimeCount = 0;
+      let withDueDateCount = 0;
+
+      for (const c of deliveredData) {
+        const diff = new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime();
+        totalDays += diff / (1000 * 60 * 60 * 24);
+
+        if (c.dueDate) {
+          withDueDateCount++;
+          if (new Date(c.updatedAt) <= new Date(c.dueDate)) {
+            onTimeCount++;
+          }
+        }
+      }
+      avgTurnaround = Math.round((totalDays / deliveredData.length) * 10) / 10;
+      if (withDueDateCount > 0) {
+        onTimeRate = Math.round((onTimeCount / withDueDateCount) * 100);
+      }
     }
 
-    // Monthly case volumes (last 6 months)
-    const monthlyCaseVolumes = [];
-    for (let i = 5; i >= 0; i--) {
-      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      const monthName = monthStart.toLocaleString("en-IN", { month: "short" });
-      const year = monthStart.getFullYear();
-
-      const count = await prisma.case.count({
-        where: {
-          labId,
-          date: { gte: monthStart, lt: monthEnd },
-        },
-      });
-
-      monthlyCaseVolumes.push({ month: monthName, year, count });
-    }
-
-    // Top dentists by case count and revenue
-    const topDentists = await prisma.dentist.findMany({
-      where: { labId, active: true },
-      include: {
-        _count: { select: { cases: true } },
-        cases: {
-          select: { amount: true },
-        },
-      },
-      orderBy: { cases: { _count: "desc" } },
-      take: 10,
+    // Process monthly volumes
+    const monthlyCaseVolumes = monthlyCounts.map((count, i) => {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      return {
+        month: monthStart.toLocaleString("en-IN", { month: "short" }),
+        year: monthStart.getFullYear(),
+        count,
+      };
     });
 
-    const topDentistData = topDentists.map((d) => ({
+    // Process top dentists
+    const topDentistData = topDentistsRaw.map((d) => ({
       id: d.id,
       name: d.name,
       clinicName: d.clinicName,
@@ -187,59 +217,31 @@ export async function GET(req: NextRequest) {
       revenue: d.cases.reduce((sum, c) => sum + c.amount, 0),
     }));
 
-    // Technician workload
-    const allTechnicians = await prisma.user.findMany({
-      where: { labId, role: "TECHNICIAN", active: true },
-      select: { id: true, name: true },
-    });
+    // Process technician workload from groupBy
+    const techMap = new Map<string, { activeCases: number; completedCases: number }>();
+    for (const stat of techWorkloadRaw) {
+      if (!stat.technicianId) continue;
+      const current = techMap.get(stat.technicianId) || { activeCases: 0, completedCases: 0 };
+      if (["FINISHED", "DELIVERED"].includes(stat.status)) {
+        current.completedCases += stat._count.id;
+      } else {
+        current.activeCases += stat._count.id;
+      }
+      techMap.set(stat.technicianId, current);
+    }
 
-    const techWorkload = await Promise.all(
-      allTechnicians.map(async (tech) => {
-        const [activeCases, completedCases] = await Promise.all([
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { notIn: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-          prisma.case.count({
-            where: {
-              labId,
-              technicianId: tech.id,
-              status: { in: ["FINISHED", "DELIVERED"] },
-            },
-          }),
-        ]);
-        return {
-          id: tech.id,
-          name: tech.name,
-          activeCases,
-          completedCases,
-        };
-      })
-    );
-
-    // Cases this month count
-    const casesThisMonth = await prisma.case.count({
-      where: {
-        labId,
-        date: { gte: currentMonthStart },
-      },
-    });
-
-    // Revenue this month (from payments)
-    const revenueThisMonth = await prisma.payment.aggregate({
-      _sum: { amount: true },
-      where: {
-        date: { gte: currentMonthStart },
-        dentist: { labId },
-      },
+    const techWorkload = allTechnicians.map((tech) => {
+      const stats = techMap.get(tech.id) || { activeCases: 0, completedCases: 0 };
+      return {
+        id: tech.id,
+        name: tech.name,
+        ...stats,
+      };
     });
 
     return NextResponse.json({
-      overdueCases: overdueWithDays,
-      dueSoonCases: dueSoonWithLabel,
+      overdueCases,
+      dueSoonCases,
       statusCounts,
       workTypeCounts,
       avgTurnaround,
@@ -248,7 +250,7 @@ export async function GET(req: NextRequest) {
       topDentists: topDentistData,
       techWorkload,
       casesThisMonth,
-      revenueThisMonth: revenueThisMonth._sum.amount || 0,
+      revenueThisMonth: revenueThisMonthRaw._sum.amount || 0,
     });
   } catch (error) {
     console.error("Analytics GET error:", error);
