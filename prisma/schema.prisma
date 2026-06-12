@@ -235,6 +235,7 @@ model Dentist {
 
   @@index([labId])
   @@index([name])
+  @@index([phone])
 }
 
 model Patient {
@@ -263,6 +264,7 @@ model Patient {
   @@index([dentistId])
   @@index([labId])
   @@index([name])
+  @@index([phone])
 }
 
 model Case {
@@ -299,6 +301,8 @@ model Case {
   @@index([caseNumber])
   @@index([technicianId])
   @@index([date])
+  @@index([dueDate])
+  @@index([workType])
 }
 
 model CaseFile {
@@ -353,6 +357,7 @@ model Payment {
 
   @@index([dentistId])
   @@index([invoiceId])
+  @@index([date])
 }
 
 model InventoryItem {
