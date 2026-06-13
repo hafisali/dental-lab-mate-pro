@@ -299,6 +299,7 @@ model Case {
   @@index([caseNumber])
   @@index([technicianId])
   @@index([date])
+  @@index([dueDate])
 }
 
 model CaseFile {
@@ -353,6 +354,7 @@ model Payment {
 
   @@index([dentistId])
   @@index([invoiceId])
+  @@index([date])
 }
 
 model InventoryItem {
