@@ -1,0 +1,3 @@
+## 2025-05-15 - Analytics API Bottlenecks and Parallelization
+**Learning:** The Analytics API was performing sequential `await` calls for over 10 independent metrics, including an N+1 pattern for technician workload and a memory-heavy in-memory aggregation for dentist revenue. Parallelizing these with `Promise.all` and offloading aggregations to Prisma's `groupBy` significantly reduces response latency and memory pressure.
+**Action:** Always check for independent Prisma calls that can be parallelized. Use `groupBy` with `_sum` and `_count` for ranking/top-N queries instead of fetching full records for in-memory calculation.
