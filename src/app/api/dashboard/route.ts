@@ -34,28 +34,40 @@ export async function GET() {
 
     const tenantWhere = getTenantWhere(labId);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
+    // Prepare parallel monthly revenue queries (last 6 months)
+    const monthlyPromises = Array.from({ length: 6 }, (_, i) => {
+      // Offset from 5 months ago to today
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+      const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
+
+      return prisma.payment.aggregate({
+        where: {
+          dentist: { ...tenantWhere },
+          date: { gte: startOfMonth, lte: endOfMonth },
+        },
+        _sum: { amount: true },
+      }).then((res) => ({
+        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        revenue: res._sum.amount || 0,
+      }));
+    });
+
+    // Execute all queries in parallel to minimize sequential database round-trips
     const [
       todayCases,
-      pendingCases,
-      deliveredCases,
       recentCases,
       statusCounts,
       payments,
       dentistBalances,
+      ...monthlyRevenue
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: { in: ["RECEIVED", "WORKING", "TRIAL"] } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: "DELIVERED" },
       }),
       prisma.case.findMany({
         where: { ...tenantWhere },
@@ -79,7 +91,15 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      ...monthlyPromises,
     ]);
+
+    // Derive pending and delivered counts from the status breakdown result to eliminate redundant queries
+    const statusMap = Object.fromEntries(
+      statusCounts.map((s) => [s.status, s._count.status])
+    );
+    const pendingCases = (statusMap["RECEIVED"] || 0) + (statusMap["WORKING"] || 0) + (statusMap["TRIAL"] || 0);
+    const deliveredCases = statusMap["DELIVERED"] || 0;
 
     const totalIncome = payments._sum.amount || 0;
     const totalBalance = dentistBalances._sum.balance || 0;
@@ -88,28 +108,6 @@ export async function GET() {
       status: s.status,
       count: s._count.status,
     }));
-
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
 
     return NextResponse.json({
       todayCases,
