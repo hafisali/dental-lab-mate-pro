@@ -30,7 +30,15 @@ export async function GET(req: NextRequest) {
     const dateTo = searchParams.get("dateTo");
 
     if (type === "sales") {
-      const where: any = { ...tenantWhere };
+      interface SalesWhere {
+        labId?: string;
+        date?: { gte?: Date; lte?: Date };
+        OR?: (
+          | { patientName: { contains: string; mode: "insensitive" } }
+          | { doctorName: { contains: string; mode: "insensitive" } }
+        )[];
+      }
+      const where: SalesWhere = { ...tenantWhere };
 
       if (dateFrom || dateTo) {
         where.date = {};
@@ -62,7 +70,19 @@ export async function GET(req: NextRequest) {
     }
 
     // Default: return pharmacy items
-    const where: any = { ...tenantWhere };
+    interface PharmacyWhere {
+      labId?: string;
+      id?: { in: string[] };
+      category?: string;
+      expiryDate?: { lte: Date; gte: Date };
+      OR?: (
+        | { name: { contains: string; mode: "insensitive" } }
+        | { genericName: { contains: string; mode: "insensitive" } }
+        | { batchNo: { contains: string; mode: "insensitive" } }
+        | { supplier: { contains: string; mode: "insensitive" } }
+      )[];
+    }
+    const where: PharmacyWhere = { ...tenantWhere };
 
     if (search) {
       where.OR = [
@@ -78,9 +98,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (lowStock === "true") {
-      where.quantity = { lte: prisma.pharmacyItem.fields.minStock };
-      // Prisma doesn't support field comparison directly, we'll filter after fetch
-      delete where.quantity;
+      // Optimized: Move low stock filtering to database level using $queryRaw
+      // since Prisma doesn't support comparing two columns in the same record directly in 'where'
+      const lowStockIds = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "PharmacyItem"
+        WHERE "labId" = ${labId} AND "quantity" <= "minStock"
+      `;
+      where.id = { in: lowStockIds.map((item) => item.id) };
     }
 
     if (expiring === "true") {
@@ -92,18 +116,13 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    let items = await prisma.pharmacyItem.findMany({
+    const items = await prisma.pharmacyItem.findMany({
       where,
       orderBy: { name: "asc" },
       include: {
         _count: { select: { sales: true } },
       },
     });
-
-    // Post-filter for low stock (since Prisma can't compare fields)
-    if (lowStock === "true") {
-      items = items.filter((item) => item.quantity <= item.minStock);
-    }
 
     return NextResponse.json(items);
   } catch (error) {
@@ -154,7 +173,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Sale must have at least one item" }, { status: 400 });
       }
 
-      const totalAmount = body.items.reduce((sum: number, item: any) => sum + (item.quantity * item.price), 0);
+      const totalAmount = body.items.reduce((sum: number, item: { quantity: number; price: number }) => sum + (item.quantity * item.price), 0);
 
       const sale = await prisma.$transaction(async (tx) => {
         // Create sale
@@ -168,7 +187,7 @@ export async function POST(req: NextRequest) {
             doctorName: body.doctorName || null,
             labId,
             items: {
-              create: body.items.map((item: any) => ({
+              create: body.items.map((item: { itemId?: string; itemName: string; quantity: number; price: number }) => ({
                 itemId: item.itemId || null,
                 itemName: item.itemName,
                 quantity: Number(item.quantity),

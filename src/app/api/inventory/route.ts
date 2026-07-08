@@ -22,13 +22,32 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search");
     const lowStock = searchParams.get("lowStock");
 
-    const where: any = { ...getTenantWhere(labId) };
+    interface InventoryWhere {
+      labId?: string;
+      id?: { in: string[] };
+      OR?: (
+        | { name: { contains: string; mode: "insensitive" } }
+        | { category: { contains: string; mode: "insensitive" } }
+      )[];
+    }
+
+    const where: InventoryWhere = { ...getTenantWhere(labId) };
 
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
         { category: { contains: search, mode: "insensitive" } },
       ];
+    }
+
+    // Optimized: Move low stock filtering to database level using $queryRaw
+    // since Prisma doesn't support comparing two columns in the same record directly in 'where'
+    if (lowStock === "true") {
+      const lowStockIds = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "InventoryItem"
+        WHERE "labId" = ${labId} AND "stock" <= "minStock"
+      `;
+      where.id = { in: lowStockIds.map((item) => item.id) };
     }
 
     const items = await prisma.inventoryItem.findMany({
@@ -39,11 +58,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const result = lowStock === "true"
-      ? items.filter((item) => item.stock <= item.minStock)
-      : items;
-
-    return NextResponse.json(result);
+    return NextResponse.json(items);
   } catch (error) {
     console.error("Inventory GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
