@@ -39,24 +39,29 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Prepare ranges for last 6 months revenue
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (5 - i));
+      return {
+        start: new Date(d.getFullYear(), d.getMonth(), 1),
+        end: new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59),
+      };
+    });
+
     const [
       todayCases,
-      pendingCases,
-      deliveredCases,
       recentCases,
       statusCounts,
       payments,
       dentistBalances,
+      ...monthlyRevenueData
     ] = await Promise.all([
+      // 1. Today's cases count
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
       }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: { in: ["RECEIVED", "WORKING", "TRIAL"] } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: "DELIVERED" },
-      }),
+      // 2. Recent cases for the list
       prisma.case.findMany({
         where: { ...tenantWhere },
         orderBy: { createdAt: "desc" },
@@ -66,50 +71,63 @@ export async function GET() {
           patient: { select: { id: true, name: true } },
         },
       }),
+      // 3. Status breakdown (also used to derive pending/delivered counts)
       prisma.case.groupBy({
         by: ["status"],
         where: { ...tenantWhere },
         _count: { status: true },
       }),
+      // 4. Total income aggregate
       prisma.payment.aggregate({
         where: { dentist: { ...tenantWhere } },
         _sum: { amount: true },
       }),
+      // 5. Total balance aggregate
       prisma.dentist.aggregate({
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      // 6-11. Parallelized monthly revenue queries
+      ...months.map((m) =>
+        prisma.payment.aggregate({
+          where: {
+            dentist: { ...tenantWhere },
+            date: { gte: m.start, lte: m.end },
+          },
+          _sum: { amount: true },
+        })
+      ),
     ]);
 
-    const totalIncome = payments._sum.amount || 0;
-    const totalBalance = dentistBalances._sum.balance || 0;
+    const totalIncome = (payments as { _sum: { amount: number | null } })._sum.amount || 0;
+    const totalBalance = (dentistBalances as { _sum: { balance: number | null } })._sum.balance || 0;
 
-    const statusBreakdown = statusCounts.map((s) => ({
+    // Map status counts for quick lookup
+    const statusMap = Object.fromEntries(
+      (statusCounts as { status: string; _count: { status: number } }[]).map((s) => [
+        s.status,
+        s._count.status,
+      ])
+    );
+
+    // Derive metrics from statusCounts instead of redundant queries
+    const pendingCases =
+      (statusMap["RECEIVED"] || 0) + (statusMap["WORKING"] || 0) + (statusMap["TRIAL"] || 0);
+    const deliveredCases = statusMap["DELIVERED"] || 0;
+
+    const statusBreakdown = (
+      statusCounts as { status: string; _count: { status: number } }[]
+    ).map((s) => ({
       status: s.status,
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
+    // Map parallelized revenue results to the expected format
+    const monthlyRevenue = months.map((m, i) => ({
+      month: m.start.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      revenue:
+        (monthlyRevenueData[i] as { _sum: { amount: number | null } })._sum.amount || 0,
+    }));
 
     return NextResponse.json({
       todayCases,
