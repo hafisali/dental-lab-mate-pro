@@ -1,0 +1,3 @@
+## 2025-05-15 - [Sequential monthly breakdown anti-pattern in Cashflow API]
+**Learning:** The `cashflow/route.ts` API previously used a sequential `for` loop with `await` to fetch monthly aggregation data, and redundant queries for periods that overlapped with the monthly results (e.g., current month, last 3 months). This resulted in ~11-13 sequential database round-trips.
+**Action:** Parallelize monthly aggregations into a single `Promise.all` block and derive all time-period summaries (current month, last 3 months, last 6 months) in-memory from the monthly results to achieve $O(1)$ sequential database round-trips.
