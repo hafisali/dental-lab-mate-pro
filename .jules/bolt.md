@@ -1,0 +1,3 @@
+## 2025-02-15 - Prevent mixed-type TypeScript destructuring issues with Promise.all
+**Learning:** Destructuring a massive single `Promise.all` that returns mixed types (objects, counts, arrays, custom query structures) and includes spread patterns (`...array`) can confuse the TypeScript compiler or produce implicit `any` errors. Keeping the time-series loop query parallelization inside its own typed `Promise.all` block is significantly cleaner and completely avoids type-casting and tuple-inference bugs.
+**Action:** For complex endpoints, group metrics queries in logical parallel blocks instead of overloading a single massive spread destructuring, maintaining clean type-safety.
