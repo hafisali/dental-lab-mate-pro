@@ -1,0 +1,3 @@
+## 2025-02-15 - [Staff API & Payroll Queries]
+**Learning:** Found that the Staff GET API had a hardcoded date range matching the current system month for attendance and payroll summaries. This resulted in incorrect/stale statistics when users navigated months on the frontend dashboard calendar, as well as inefficient database scans due to the lack of a database index on `StaffPayment.date`.
+**Action:** Parameterized the Staff GET API to accept optional `year` and `month` query parameters, updating the frontend page to pass the active calendar year/month to `/api/staff` and reload data on navigation. Added a missing database index on `StaffPayment.date` to optimize payroll date-range queries.

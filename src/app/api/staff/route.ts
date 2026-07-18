@@ -33,10 +33,26 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    // Get current month range for attendance summary
+    // PERFORMANCE OPTIMIZATION: Parse optional year and month params for targeted querying.
+    // By default, fallback to the current month to limit data scanning and reduce database workload.
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    let year = now.getFullYear();
+    let month = now.getMonth();
+
+    const yearParam = searchParams.get("year");
+    const monthParam = searchParams.get("month");
+
+    if (yearParam) {
+      const parsedYear = parseInt(yearParam, 10);
+      if (!isNaN(parsedYear)) year = parsedYear;
+    }
+    if (monthParam) {
+      const parsedMonth = parseInt(monthParam, 10);
+      if (!isNaN(parsedMonth) && parsedMonth >= 0 && parsedMonth <= 11) month = parsedMonth;
+    }
+
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
     const staff = await prisma.staff.findMany({
       where,
