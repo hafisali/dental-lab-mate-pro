@@ -140,9 +140,11 @@ export default function StaffPage() {
   });
   const [allPayments, setAllPayments] = useState<any[]>([]);
 
+  // PERFORMANCE OPTIMIZATION: Retrieve only the attendance and payment records for the active calendar month and year.
+  // This drastically reduces payload size and database query processing time while preventing stale data on month navigation.
   const fetchStaff = useCallback(async () => {
     try {
-      const res = await fetch("/api/staff");
+      const res = await fetch(`/api/staff?year=${calendarYear}&month=${calendarMonth}`);
       const data = await res.json();
       setStaffList(Array.isArray(data) ? data : []);
     } catch {
@@ -150,7 +152,7 @@ export default function StaffPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [calendarYear, calendarMonth]);
 
   const fetchAttendanceForDate = useCallback(async (date: string) => {
     // Attendance is included in staff data, we build from that
