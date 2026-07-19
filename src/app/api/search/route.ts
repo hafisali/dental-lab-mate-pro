@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
 
 interface SearchResult {
   id: string;
@@ -29,23 +30,51 @@ export async function GET(req: NextRequest) {
     const tenantWhere = getTenantWhere(labId);
     const q = req.nextUrl.searchParams.get("q")?.trim();
 
-    if (!q || q.length < 1) {
+    // PERFORMANCE OPTIMIZATION: Avoid expensive database scans (like LIKE/contains queries across 4 major tables)
+    // on extremely short search strings (e.g. 1 character) which match a massive portion of the database.
+    if (!q || q.length < 2) {
       return NextResponse.json({ results: [] });
     }
 
     const searchTerm = q;
 
-    // Run all searches in parallel
+    // Type-safe 'where' parameters instead of 'any' to satisfy strict TS/linter rules and ensure clean compiled code
+    const caseWhere: Prisma.CaseWhereInput = {
+      ...tenantWhere,
+      OR: [
+        { caseNumber: { contains: searchTerm, mode: "insensitive" } },
+        { workType: { contains: searchTerm, mode: "insensitive" } },
+      ],
+    };
+
+    const dentistWhere: Prisma.DentistWhereInput = {
+      ...tenantWhere,
+      OR: [
+        { name: { contains: searchTerm, mode: "insensitive" } },
+        { clinicName: { contains: searchTerm, mode: "insensitive" } },
+      ],
+    };
+
+    const patientWhere: Prisma.PatientWhereInput = {
+      ...tenantWhere,
+      OR: [
+        { name: { contains: searchTerm, mode: "insensitive" } },
+        { phone: { contains: searchTerm, mode: "insensitive" } },
+      ],
+    };
+
+    const invoiceWhere: Prisma.InvoiceWhereInput = {
+      ...tenantWhere,
+      OR: [
+        { invoiceNumber: { contains: searchTerm, mode: "insensitive" } },
+      ],
+    };
+
+    // Run all searches in parallel to avoid waterfalls
     const [cases, dentists, patients, invoices] = await Promise.all([
       // Search Cases by caseNumber, workType
       prisma.case.findMany({
-        where: {
-          ...tenantWhere,
-          OR: [
-            { caseNumber: { contains: searchTerm, mode: "insensitive" } },
-            { workType: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        },
+        where: caseWhere,
         include: {
           dentist: { select: { name: true } },
           patient: { select: { name: true } },
@@ -56,26 +85,14 @@ export async function GET(req: NextRequest) {
 
       // Search Dentists by name, clinicName
       prisma.dentist.findMany({
-        where: {
-          ...tenantWhere,
-          OR: [
-            { name: { contains: searchTerm, mode: "insensitive" } },
-            { clinicName: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        },
+        where: dentistWhere,
         take: 5,
         orderBy: { createdAt: "desc" },
       }),
 
       // Search Patients by name, phone
       prisma.patient.findMany({
-        where: {
-          ...tenantWhere,
-          OR: [
-            { name: { contains: searchTerm, mode: "insensitive" } },
-            { phone: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        },
+        where: patientWhere,
         include: {
           dentist: { select: { name: true } },
         },
@@ -85,12 +102,7 @@ export async function GET(req: NextRequest) {
 
       // Search Invoices by invoiceNumber
       prisma.invoice.findMany({
-        where: {
-          ...tenantWhere,
-          OR: [
-            { invoiceNumber: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        },
+        where: invoiceWhere,
         include: {
           dentist: { select: { name: true } },
         },
