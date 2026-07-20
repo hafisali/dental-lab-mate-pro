@@ -1,0 +1,3 @@
+## 2025-02-14 - Parallelizing sequential monthly time-series queries
+**Learning:** This codebase frequently implements monthly time-series data fetches (e.g., last 6 months revenue, volume, or cashflow) inside sequential `for` loops, resulting in multiple sequential database queries and higher API latency. Parallelizing these fetches via `Promise.all` executes them in a single database round-trip, significantly cutting down request times.
+**Action:** Always scan for `for` loops or sequential arrays mapping to asynchronous database aggregation queries in API paths like `/api/dashboard`, `/api/analytics`, or `/api/cashflow`, and refactor them to execute concurrently via `Promise.all`.
