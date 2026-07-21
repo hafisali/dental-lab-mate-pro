@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,8 +22,10 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const search = searchParams.get("search");
     const dentistId = searchParams.get("dentistId");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
-    const where: any = { ...getTenantWhere(labId) };
+    const where: Prisma.PatientWhereInput = { ...getTenantWhere(labId) };
     if (dentistId) where.dentistId = dentistId;
 
     if (search) {
@@ -32,17 +35,55 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const patients = await prisma.patient.findMany({
+    // Performance Optimization: Support dynamic pagination to load patients in smaller batches.
+    // This dramatically reduces CPU, memory, and database transfer overhead for large patient datasets.
+    // If no page/limit parameters are passed, we default to returning 100 records in a plain array
+    // to maintain exact backward compatibility with the dashboard UI.
+    const hasPagination = !!(pageParam || limitParam);
+
+    const parsedPage = parseInt(pageParam || "1", 10);
+    const page = isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
+
+    const parsedLimit = parseInt(limitParam || "50", 10);
+    // Sanitize and cap limit to prevent extremely large batch sizes from degrading performance.
+    const limit = isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 200);
+
+    const skip = (page - 1) * limit;
+
+    const queryOptions: Prisma.PatientFindManyArgs = {
       where,
       orderBy: { name: "asc" },
-      take: 100,
       include: {
         dentist: { select: { id: true, name: true } },
         _count: { select: { cases: true } },
       },
-    });
+    };
 
-    return NextResponse.json(patients);
+    if (hasPagination) {
+      queryOptions.skip = skip;
+      queryOptions.take = limit;
+
+      // Execute both the data fetch and total count query in parallel
+      const [patients, total] = await Promise.all([
+        prisma.patient.findMany(queryOptions),
+        prisma.patient.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        patients,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    } else {
+      queryOptions.take = 100;
+      // Performance Optimization: Avoid the extra count query if pagination is not requested
+      const patients = await prisma.patient.findMany(queryOptions);
+      return NextResponse.json(patients);
+    }
   } catch (error) {
     console.error("Patients GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

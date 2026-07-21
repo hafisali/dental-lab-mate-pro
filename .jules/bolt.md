@@ -1,0 +1,3 @@
+## 2025-02-18 - Conditional Database Counts on Optional Pagination
+**Learning:** Adding pagination query parameters with standard total counts to existing API routes can cause performance regressions for unpaginated default requests if database `.count()` queries are executed unconditionally.
+**Action:** Always wrap the `.count()` queries conditionally so they are only invoked when the client requests paginated responses, and parallelize them alongside the main data query using `Promise.all` to avoid synchronous blocking. Always sanitize and validate client inputs (e.g., page, limit) by enforcing defaults and ceiling limits to prevent query failure or massive payload generation.
