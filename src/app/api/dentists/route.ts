@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,8 +22,10 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const search = searchParams.get("search");
     const all = searchParams.get("all");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
-    const where: any = { ...getTenantWhere(labId) };
+    const where: Prisma.DentistWhereInput = { ...getTenantWhere(labId) };
     where.active = true;
 
     if (search) {
@@ -33,16 +36,56 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const dentists = await prisma.dentist.findMany({
+    // Performance Optimization: Support dynamic pagination to load dentists in smaller batches.
+    // This dramatically reduces CPU, memory, and database transfer overhead for large datasets.
+    // If no page/limit parameters are passed, we maintain exact backward compatibility
+    // by either returning all records (if all=true) or the default 100 records.
+    const hasPagination = !!(pageParam || limitParam);
+
+    const parsedPage = parseInt(pageParam || "1", 10);
+    const page = isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
+
+    const parsedLimit = parseInt(limitParam || "50", 10);
+    // Sanitize and cap limit to prevent extremely large batch sizes from degrading performance.
+    const limit = isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 200);
+
+    const skip = (page - 1) * limit;
+
+    const queryOptions: Prisma.DentistFindManyArgs = {
       where,
       orderBy: { name: "asc" },
-      ...(all ? {} : { take: 100 }),
       include: {
         _count: { select: { cases: true, patients: true } },
       },
-    });
+    };
 
-    return NextResponse.json(dentists);
+    if (hasPagination) {
+      queryOptions.skip = skip;
+      queryOptions.take = limit;
+
+      // Execute both the data fetch and total count query in parallel
+      const [dentists, total] = await Promise.all([
+        prisma.dentist.findMany(queryOptions),
+        prisma.dentist.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        dentists,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    } else {
+      if (!all) {
+        queryOptions.take = 100;
+      }
+      // Performance Optimization: Avoid the extra count query if pagination is not requested
+      const dentists = await prisma.dentist.findMany(queryOptions);
+      return NextResponse.json(dentists);
+    }
   } catch (error) {
     console.error("Dentists GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
