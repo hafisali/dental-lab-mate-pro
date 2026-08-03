@@ -90,26 +90,37 @@ export async function GET() {
     }));
 
     // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
+    const monthOffsets = [5, 4, 3, 2, 1, 0];
+    const monthRanges = monthOffsets.map((i) => {
       const d = new Date();
+      // Set to 1st of current month first to prevent date overflow/underflow roll-overs (e.g. Jan 31st to Feb)
+      d.setDate(1);
       d.setMonth(d.getMonth() - i);
       const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
       const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+      const monthLabel = startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+      return { startOfMonth, endOfMonth, monthLabel };
+    });
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
+    const monthlyPaymentsResults = await Promise.all(
+      monthRanges.map((range) =>
+        prisma.payment.aggregate({
+          where: {
+            dentist: { ...tenantWhere },
+            date: { gte: range.startOfMonth, lte: range.endOfMonth },
+          },
+          _sum: { amount: true },
+        })
+      )
+    );
 
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
+    const monthlyRevenue = monthRanges.map((range, index) => {
+      const result = monthlyPaymentsResults[index] as { _sum: { amount: number | null } };
+      return {
+        month: range.monthLabel,
+        revenue: result._sum.amount || 0,
+      };
+    });
 
     return NextResponse.json({
       todayCases,
