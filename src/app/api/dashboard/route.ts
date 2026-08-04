@@ -41,22 +41,16 @@ export async function GET() {
 
     const [
       todayCases,
-      pendingCases,
-      deliveredCases,
       recentCases,
       statusCounts,
       payments,
       dentistBalances,
     ] = await Promise.all([
+      // Count today's cases
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
       }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: { in: ["RECEIVED", "WORKING", "TRIAL"] } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: "DELIVERED" },
-      }),
+      // Retrieve 10 most recent cases
       prisma.case.findMany({
         where: { ...tenantWhere },
         orderBy: { createdAt: "desc" },
@@ -66,15 +60,18 @@ export async function GET() {
           patient: { select: { id: true, name: true } },
         },
       }),
+      // Group by status to fetch all status-related counts in a single query
       prisma.case.groupBy({
         by: ["status"],
         where: { ...tenantWhere },
         _count: { status: true },
       }),
+      // Sum payments (total income)
       prisma.payment.aggregate({
         where: { dentist: { ...tenantWhere } },
         _sum: { amount: true },
       }),
+      // Sum dentist balances
       prisma.dentist.aggregate({
         where: { ...tenantWhere },
         _sum: { balance: true },
@@ -84,32 +81,47 @@ export async function GET() {
     const totalIncome = payments._sum.amount || 0;
     const totalBalance = dentistBalances._sum.balance || 0;
 
+    // Derived counts from the single groupBy statusCounts query, eliminating 2 redundant database counts
+    let pendingCases = 0;
+    let deliveredCases = 0;
+    const pendingStatuses = ["RECEIVED", "WORKING", "TRIAL"];
+    statusCounts.forEach((s) => {
+      if (s.status === "DELIVERED") {
+        deliveredCases = s._count.status;
+      } else if (pendingStatuses.includes(s.status)) {
+        pendingCases += s._count.status;
+      }
+    });
+
     const statusBreakdown = statusCounts.map((s) => ({
       status: s.status,
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
+    // Monthly revenue (last 6 months) - parallelized Promise.all to eliminate sequential loop round-trips
+    const monthlyRevenuePromises = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
+      // Always set day to 1 before setMonth to avoid date rollover/underflow overflow bugs on months with 31 days
+      d.setDate(1);
       d.setMonth(d.getMonth() - i);
       const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
       const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
+      monthlyRevenuePromises.push(
+        prisma.payment.aggregate({
+          where: {
+            dentist: { ...tenantWhere },
+            date: { gte: startOfMonth, lte: endOfMonth },
+          },
+          _sum: { amount: true },
+        }).then((monthPayments) => ({
+          month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+          revenue: monthPayments._sum.amount || 0,
+        }))
+      );
     }
+    const monthlyRevenue = await Promise.all(monthlyRevenuePromises);
 
     return NextResponse.json({
       todayCases,
