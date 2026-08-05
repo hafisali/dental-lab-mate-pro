@@ -39,10 +39,11 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Fetch initial metrics in parallel.
+    // Optimisation: We eliminate 2 redundant database .count() queries for pending and delivered cases.
+    // Instead, we derive pendingCases and deliveredCases directly in-memory from the statusCounts groupBy query.
     const [
       todayCases,
-      pendingCases,
-      deliveredCases,
       recentCases,
       statusCounts,
       payments,
@@ -50,12 +51,6 @@ export async function GET() {
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: { in: ["RECEIVED", "WORKING", "TRIAL"] } },
-      }),
-      prisma.case.count({
-        where: { ...tenantWhere, status: "DELIVERED" },
       }),
       prisma.case.findMany({
         where: { ...tenantWhere },
@@ -84,32 +79,62 @@ export async function GET() {
     const totalIncome = payments._sum.amount || 0;
     const totalBalance = dentistBalances._sum.balance || 0;
 
+    // Map statusCounts to statusBreakdown and derive pending/delivered cases in-memory
     const statusBreakdown = statusCounts.map((s) => ({
       status: s.status,
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
+    const statusCountsMap: Record<string, number> = {};
+    for (const s of statusCounts) {
+      statusCountsMap[s.status] = s._count.status;
+    }
+
+    const pendingCases =
+      (statusCountsMap["RECEIVED"] || 0) +
+      (statusCountsMap["WORKING"] || 0) +
+      (statusCountsMap["TRIAL"] || 0);
+
+    const deliveredCases = statusCountsMap["DELIVERED"] || 0;
+
+    // Optimisation: Parallelize the monthly revenue queries (formerly sequential loops) with Promise.all
+    // Also prevent Date rollover bugs (e.g., Jan 31st) by setting the date of month to 1 beforehand.
+    const monthlyRevenuePromises = [];
+    const monthlyRevenueMeta: { month: string; startOfMonth: Date; endOfMonth: Date }[] = [];
+
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
+      d.setDate(1); // Avoid Javascript Date overflow/rollover bug
       d.setMonth(d.getMonth() - i);
       const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
       const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
+      monthlyRevenueMeta.push({
+        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        startOfMonth,
+        endOfMonth,
       });
 
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
+      monthlyRevenuePromises.push(
+        prisma.payment.aggregate({
+          where: {
+            dentist: { ...tenantWhere },
+            date: { gte: startOfMonth, lte: endOfMonth },
+          },
+          _sum: { amount: true },
+        })
+      );
     }
+
+    const monthlyRevenueResults = await Promise.all(monthlyRevenuePromises);
+
+    const monthlyRevenue = monthlyRevenueResults.map((monthPayments, idx) => {
+      const meta = monthlyRevenueMeta[idx];
+      return {
+        month: meta.month,
+        revenue: (monthPayments as { _sum: { amount: number | null } })._sum.amount || 0,
+      };
+    });
 
     return NextResponse.json({
       todayCases,
