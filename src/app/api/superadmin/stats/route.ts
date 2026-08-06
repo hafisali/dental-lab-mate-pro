@@ -10,10 +10,18 @@ const PLAN_PRICES: Record<string, number> = {
   enterprise: 4999,
 };
 
+interface PlanGroup {
+  plan: string;
+  isActive: boolean;
+  _count: {
+    id: number;
+  };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    if (!session?.user || (session.user as { role?: string }).role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
@@ -35,7 +43,7 @@ export async function GET(req: NextRequest) {
       recentLogins,
       recentRegistrations,
       newLabsThisMonth,
-      allLabs,
+      planGroups,
       recentSignups,
     ] = await Promise.all([
       prisma.lab.count(),
@@ -63,11 +71,13 @@ export async function GET(req: NextRequest) {
         where: { action: "REGISTER", createdAt: { gte: sevenDaysAgo } },
       }),
       prisma.lab.count({ where: { createdAt: { gte: startOfMonth } } }),
-      // Fetch all labs to calculate MRR and plan breakdown
-      prisma.lab.findMany({
-        where: { isActive: true },
-        select: { plan: true },
-      }),
+      // Group by plan and isActive to calculate MRR and plan breakdown in a single DB query
+      prisma.lab.groupBy({
+        by: ["plan", "isActive"],
+        _count: {
+          id: true,
+        },
+      }) as unknown as Promise<PlanGroup[]>,
       // Recent signups (last 5 labs)
       prisma.lab.findMany({
         orderBy: { createdAt: "desc" },
@@ -84,27 +94,22 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // Calculate MRR from active labs
+    // Calculate MRR from active labs & plan breakdown from grouped query results
     let totalMRR = 0;
     const planBreakdown: Record<string, number> = { trial: 0, basic: 0, pro: 0, enterprise: 0 };
 
-    for (const lab of allLabs) {
-      const plan = lab.plan.toLowerCase();
-      totalMRR += PLAN_PRICES[plan] || 0;
-      if (plan in planBreakdown) {
-        planBreakdown[plan]++;
-      }
-    }
+    for (const group of planGroups) {
+      const plan = group.plan.toLowerCase();
+      const count = group._count.id;
 
-    // Also count inactive labs in breakdown
-    const inactiveLabs = await prisma.lab.findMany({
-      where: { isActive: false },
-      select: { plan: true },
-    });
-    for (const lab of inactiveLabs) {
-      const plan = lab.plan.toLowerCase();
+      // Calculate MRR only from active labs
+      if (group.isActive) {
+        totalMRR += (PLAN_PRICES[plan] || 0) * count;
+      }
+
+      // Add to plan breakdown (both active and inactive)
       if (plan in planBreakdown) {
-        planBreakdown[plan]++;
+        planBreakdown[plan] += count;
       }
     }
 
