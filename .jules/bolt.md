@@ -1,0 +1,3 @@
+## 2026-03-14 - Batching N+1 Queries in SuperAdmin/Dashboard Loop Routes
+**Learning:** In multi-tenant systems, administrative endpoints (like `/superadmin/labs`) often query lists of tenants and then execute nested database reads per tenant (e.g., retrieving each tenant's user logins). This creates an N+1 query overhead which severely degrades response times as the tenant list grows. GroupBy aggregation and in-memory map/reducing can completely resolve this by reducing database roundtrips to $O(1)$.
+**Action:** Always batch related entities (e.g. mapping emails/IDs) and fetch them collectively using `in` conditions, followed by grouping or client-side filtering instead of nested query loops.
