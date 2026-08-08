@@ -3,10 +3,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    if (!session?.user || (session.user as { role?: string }).role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
@@ -24,29 +24,61 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    // Fetch last login for each lab
-    const labsWithLogin = await Promise.all(
-      labs.map(async (lab) => {
-        const lastLoginActivity = await prisma.loginActivity.findFirst({
-          where: {
-            action: "LOGIN_SUCCESS",
-            userId: { not: null },
-            email: {
-              in: await prisma.user
-                .findMany({ where: { labId: lab.id }, select: { email: true } })
-                .then((users) => users.map((u) => u.email)),
-            },
-          },
-          orderBy: { createdAt: "desc" },
-          select: { createdAt: true },
-        });
+    // Batched fetch of last login for each lab
+    const labIds = labs.map((l) => l.id);
+    const users = await prisma.user.findMany({
+      where: { labId: { in: labIds } },
+      select: { email: true, labId: true },
+    });
 
-        return {
-          ...lab,
-          lastLogin: lastLoginActivity?.createdAt || null,
-        };
-      })
-    );
+    const labEmailsMap = new Map<string, string[]>();
+    const allEmailsSet = new Set<string>();
+    for (const u of users) {
+      if (u.labId) {
+        let emails = labEmailsMap.get(u.labId);
+        if (!emails) {
+          emails = [];
+          labEmailsMap.set(u.labId, emails);
+        }
+        emails.push(u.email);
+        allEmailsSet.add(u.email);
+      }
+    }
+
+    const loginActivities = await prisma.loginActivity.groupBy({
+      by: ["email"],
+      where: {
+        action: "LOGIN_SUCCESS",
+        email: { in: Array.from(allEmailsSet) },
+      },
+      _max: {
+        createdAt: true,
+      },
+    });
+
+    const emailLastLoginMap = new Map<string, Date>();
+    for (const act of loginActivities) {
+      if (act._max.createdAt) {
+        emailLastLoginMap.set(act.email, act._max.createdAt);
+      }
+    }
+
+    const labsWithLogin = labs.map((lab) => {
+      const emails = labEmailsMap.get(lab.id) || [];
+      let latestLogin: Date | null = null;
+      for (const email of emails) {
+        const loginDate = emailLastLoginMap.get(email);
+        if (loginDate) {
+          if (!latestLogin || loginDate > latestLogin) {
+            latestLogin = loginDate;
+          }
+        }
+      }
+      return {
+        ...lab,
+        lastLogin: latestLogin,
+      };
+    });
 
     return NextResponse.json({ labs: labsWithLogin });
   } catch (error) {
@@ -58,7 +90,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    if (!session?.user || (session.user as { role?: string }).role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
@@ -90,7 +122,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    if (!session?.user || (session.user as { role?: string }).role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
