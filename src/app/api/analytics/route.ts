@@ -148,23 +148,25 @@ export async function GET(req: NextRequest) {
       onTimeRate = Math.round((onTimeCount / deliveredWithDue.length) * 100);
     }
 
-    // Monthly case volumes (last 6 months)
-    const monthlyCaseVolumes = [];
-    for (let i = 5; i >= 0; i--) {
-      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      const monthName = monthStart.toLocaleString("en-IN", { month: "short" });
-      const year = monthStart.getFullYear();
+    // Monthly case volumes (last 6 months) - Optimized: Fetched in parallel to reduce N+1 latency
+    const monthlyCaseVolumes = await Promise.all(
+      Array.from({ length: 6 }, (_, index) => {
+        const i = 5 - index;
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+        const monthName = monthStart.toLocaleString("en-IN", { month: "short" });
+        const year = monthStart.getFullYear();
 
-      const count = await prisma.case.count({
-        where: {
-          labId,
-          date: { gte: monthStart, lt: monthEnd },
-        },
-      });
-
-      monthlyCaseVolumes.push({ month: monthName, year, count });
-    }
+        return prisma.case
+          .count({
+            where: {
+              labId,
+              date: { gte: monthStart, lt: monthEnd },
+            },
+          })
+          .then((count) => ({ month: monthName, year, count }));
+      })
+    );
 
     // Top dentists by case count and revenue
     const topDentists = await prisma.dentist.findMany({
