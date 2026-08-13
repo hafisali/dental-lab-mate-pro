@@ -1,10 +1,30 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId } from "@/lib/tenant";
 
-export async function GET(req: NextRequest) {
+interface MonthlyAggregationResult {
+  _sum: {
+    amount: number | null;
+  };
+}
+
+interface ExpenseCategoryResult {
+  category: string;
+  _sum: {
+    amount: number | null;
+  };
+}
+
+interface InvoiceWithPayments {
+  total: number;
+  payments: {
+    amount: number;
+  }[];
+}
+
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
@@ -23,192 +43,131 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const last3MonthsStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
     const last6MonthsStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-    // Income from payments
-    const [
-      currentMonthIncome,
-      lastMonthIncome,
-      last3MonthsIncome,
-      last6MonthsIncome,
-    ] = await Promise.all([
-      prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: currentMonthStart },
-          dentist: { labId },
-        },
-      }),
-      prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: lastMonthStart, lt: currentMonthStart },
-          dentist: { labId },
-        },
-      }),
-      prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: last3MonthsStart },
-          dentist: { labId },
-        },
-      }),
-      prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: last6MonthsStart },
-          dentist: { labId },
-        },
-      }),
-    ]);
-
-    // Expenses
-    const [
-      currentMonthExpenses,
-      lastMonthExpenses,
-      last3MonthsExpenses,
-      last6MonthsExpenses,
-    ] = await Promise.all([
-      prisma.expense.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: currentMonthStart },
-          labId,
-        },
-      }),
-      prisma.expense.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: lastMonthStart, lt: currentMonthStart },
-          labId,
-        },
-      }),
-      prisma.expense.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: last3MonthsStart },
-          labId,
-        },
-      }),
-      prisma.expense.aggregate({
-        _sum: { amount: true },
-        where: {
-          date: { gte: last6MonthsStart },
-          labId,
-        },
-      }),
-    ]);
-
-    // Monthly breakdown for last 6 months
-    const monthlyBreakdown = [];
+    // Prepare month ranges for the last 6 months
+    const monthRanges = [];
     for (let i = 5; i >= 0; i--) {
       const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
       const monthName = monthStart.toLocaleString("en-IN", { month: "short" });
       const year = monthStart.getFullYear();
+      monthRanges.push({ monthStart, monthEnd, monthName, year });
+    }
 
-      const [monthIncome, monthExpenses] = await Promise.all([
+    /**
+     * OPTIMIZATION: Parallelize all database queries.
+     *
+     * Previously, this endpoint made sequential calls for income and expenses across multiple months,
+     * leading to ~11-13 sequential database round-trips. By consolidating all queries into a single
+     * Promise.all block and deriving summary metrics in-memory, we reduce this to 1 round-trip.
+     */
+    const [
+      monthlyIncomeResults,
+      monthlyExpenseResults,
+      expensesByCategory,
+      outstandingInvoices,
+      totalInvoices,
+      paidInvoices,
+    ] = await Promise.all([
+      // 6 Monthly Income Queries
+      Promise.all(monthRanges.map(range =>
         prisma.payment.aggregate({
           _sum: { amount: true },
           where: {
-            date: { gte: monthStart, lt: monthEnd },
+            date: { gte: range.monthStart, lt: range.monthEnd },
             dentist: { labId },
           },
-        }),
+        })
+      )),
+      // 6 Monthly Expense Queries
+      Promise.all(monthRanges.map(range =>
         prisma.expense.aggregate({
           _sum: { amount: true },
           where: {
-            date: { gte: monthStart, lt: monthEnd },
+            date: { gte: range.monthStart, lt: range.monthEnd },
             labId,
           },
-        }),
-      ]);
-
-      const income = monthIncome._sum.amount || 0;
-      const expenses = monthExpenses._sum.amount || 0;
-
-      monthlyBreakdown.push({
-        month: monthName,
-        year,
-        income,
-        expenses,
-        net: income - expenses,
-      });
-    }
-
-    // Top expense categories
-    const expensesByCategory = await prisma.expense.groupBy({
-      by: ["category"],
-      _sum: { amount: true },
-      where: {
-        labId,
-        date: { gte: last6MonthsStart },
-      },
-      orderBy: { _sum: { amount: "desc" } },
-    });
-
-    const topCategories = expensesByCategory.map((e) => ({
-      category: e.category,
-      amount: e._sum.amount || 0,
-    }));
-
-    // Outstanding receivables (unpaid/partial invoices)
-    const outstandingInvoices = await prisma.invoice.findMany({
-      where: {
-        labId,
-        status: { in: ["SENT", "PARTIAL", "OVERDUE", "DRAFT"] },
-      },
-      include: {
-        payments: { select: { amount: true } },
-      },
-    });
-
-    const outstandingReceivables = outstandingInvoices.reduce((sum, inv) => {
-      const paid = inv.payments.reduce((s, p) => s + p.amount, 0);
-      return sum + (inv.total - paid);
-    }, 0);
-
-    // Collection rate
-    const [totalInvoices, paidInvoices] = await Promise.all([
+        })
+      )),
+      // Top expense categories (last 6 months)
+      prisma.expense.groupBy({
+        by: ["category"],
+        _sum: { amount: true },
+        where: {
+          labId,
+          date: { gte: last6MonthsStart },
+        },
+        orderBy: { _sum: { amount: "desc" } },
+      }),
+      // Outstanding receivables (unpaid/partial invoices)
+      prisma.invoice.findMany({
+        where: {
+          labId,
+          status: { in: ["SENT", "PARTIAL", "OVERDUE", "DRAFT"] },
+        },
+        include: {
+          payments: { select: { amount: true } },
+        },
+      }),
+      // Collection rate stats
       prisma.invoice.count({ where: { labId, status: { not: "CANCELLED" } } }),
       prisma.invoice.count({ where: { labId, status: "PAID" } }),
     ]);
 
+    // Process monthly breakdown
+    const monthlyBreakdown = monthRanges.map((range, index) => {
+      const income = (monthlyIncomeResults[index] as MonthlyAggregationResult)._sum.amount || 0;
+      const expenses = (monthlyExpenseResults[index] as MonthlyAggregationResult)._sum.amount || 0;
+      return {
+        month: range.monthName,
+        year: range.year,
+        income,
+        expenses,
+        net: income - expenses,
+      };
+    });
+
+    // Derive summary metrics from the monthlyBreakdown array in-memory to avoid redundant database calls
+    const currentMonth = monthlyBreakdown[5];
+    const lastMonth = monthlyBreakdown[4];
+
+    const last3MonthsAgg = monthlyBreakdown.slice(3).reduce((acc, curr) => ({
+      income: acc.income + curr.income,
+      expenses: acc.expenses + curr.expenses,
+    }), { income: 0, expenses: 0 });
+
+    const last6MonthsAgg = monthlyBreakdown.reduce((acc, curr) => ({
+      income: acc.income + curr.income,
+      expenses: acc.expenses + curr.expenses,
+    }), { income: 0, expenses: 0 });
+
+    // Format top categories
+    const topCategories = (expensesByCategory as unknown as ExpenseCategoryResult[]).map((e) => ({
+      category: e.category,
+      amount: e._sum.amount || 0,
+    }));
+
+    // Calculate outstanding receivables from fetched invoices
+    const outstandingReceivables = (outstandingInvoices as unknown as InvoiceWithPayments[]).reduce((sum, inv) => {
+      const paid = inv.payments.reduce((s: number, p: { amount: number }) => s + p.amount, 0);
+      return sum + (inv.total - paid);
+    }, 0);
+
+    // Calculate collection rate
     const collectionRate =
       totalInvoices > 0 ? Math.round((paidInvoices / totalInvoices) * 100) : 0;
 
-    const curIncome = currentMonthIncome._sum.amount || 0;
-    const curExpenses = currentMonthExpenses._sum.amount || 0;
-    const prevIncome = lastMonthIncome._sum.amount || 0;
-    const prevExpenses = lastMonthExpenses._sum.amount || 0;
-
     return NextResponse.json({
-      currentMonth: {
-        income: curIncome,
-        expenses: curExpenses,
-        net: curIncome - curExpenses,
-      },
-      lastMonth: {
-        income: prevIncome,
-        expenses: prevExpenses,
-        net: prevIncome - prevExpenses,
-      },
+      currentMonth,
+      lastMonth,
       last3Months: {
-        income: last3MonthsIncome._sum.amount || 0,
-        expenses: last3MonthsExpenses._sum.amount || 0,
-        net:
-          (last3MonthsIncome._sum.amount || 0) -
-          (last3MonthsExpenses._sum.amount || 0),
+        ...last3MonthsAgg,
+        net: last3MonthsAgg.income - last3MonthsAgg.expenses,
       },
       last6Months: {
-        income: last6MonthsIncome._sum.amount || 0,
-        expenses: last6MonthsExpenses._sum.amount || 0,
-        net:
-          (last6MonthsIncome._sum.amount || 0) -
-          (last6MonthsExpenses._sum.amount || 0),
+        ...last6MonthsAgg,
+        net: last6MonthsAgg.income - last6MonthsAgg.expenses,
       },
       monthlyBreakdown,
       topCategories,
