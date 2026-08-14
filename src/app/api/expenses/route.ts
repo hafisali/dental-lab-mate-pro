@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
@@ -22,8 +23,10 @@ export async function GET(req: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const category = searchParams.get("category");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
-    const where: any = { ...getTenantWhere(labId) };
+    const where: Prisma.ExpenseWhereInput = { ...getTenantWhere(labId) };
 
     if (startDate || endDate) {
       where.date = {};
@@ -35,6 +38,37 @@ export async function GET(req: NextRequest) {
       where.category = category;
     }
 
+    // Check if dynamic pagination is explicitly requested
+    const hasPagination = pageParam !== null || limitParam !== null;
+
+    if (hasPagination) {
+      const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(limitParam || "20", 10) || 20));
+      const skip = (page - 1) * limit;
+
+      // Execute data retrieval and total count in parallel
+      const [expenses, total] = await Promise.all([
+        prisma.expense.findMany({
+          where,
+          orderBy: { date: "desc" },
+          skip,
+          take: limit,
+        }),
+        prisma.expense.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        expenses,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    }
+
+    // Fallback for non-paginated requests (preserves backward compatibility)
     const expenses = await prisma.expense.findMany({
       where,
       orderBy: { date: "desc" },
