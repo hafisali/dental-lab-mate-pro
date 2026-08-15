@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateInvoiceNumber } from "@/lib/utils";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma, InvoiceStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,11 +26,47 @@ export async function GET(req: NextRequest) {
     const dentistId = searchParams.get("dentistId");
     const status = searchParams.get("status");
 
-    if (type === "payments") {
-      const where: any = {};
-      if (dentistId) where.dentistId = dentistId;
-      if (labId) where.dentist = { ...tenantWhere };
+    // Optional pagination parameters
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
+    const page = Math.max(1, parseInt(pageParam || "1") || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(limitParam || "20") || 20));
+    const skip = (page - 1) * limit;
+
+    if (type === "payments") {
+      const where: Prisma.PaymentWhereInput = {};
+      if (dentistId) where.dentistId = dentistId;
+      if (labId) where.dentist = tenantWhere;
+
+      // Optimization: Dynamic pagination for payment history
+      if (pageParam) {
+        const [payments, total] = await Promise.all([
+          prisma.payment.findMany({
+            where,
+            orderBy: { date: "desc" },
+            skip,
+            take: limit,
+            include: {
+              dentist: { select: { id: true, name: true } },
+              invoice: { select: { id: true, invoiceNumber: true } },
+            },
+          }),
+          prisma.payment.count({ where }),
+        ]);
+
+        return NextResponse.json({
+          payments,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+        });
+      }
+
+      // Backward-compatible unpaginated fallback
       const payments = await prisma.payment.findMany({
         where,
         orderBy: { date: "desc" },
@@ -43,10 +80,39 @@ export async function GET(req: NextRequest) {
     }
 
     // Invoices
-    const where: any = { ...tenantWhere };
+    const where: Prisma.InvoiceWhereInput = { ...tenantWhere };
     if (dentistId) where.dentistId = dentistId;
-    if (status) where.status = status;
+    if (status) where.status = status as InvoiceStatus;
 
+    // Optimization: Dynamic pagination for invoices
+    if (pageParam) {
+      const [invoices, total] = await Promise.all([
+        prisma.invoice.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+          include: {
+            dentist: { select: { id: true, name: true } },
+            case: { select: { id: true, caseNumber: true, workType: true } },
+            payments: true,
+          },
+        }),
+        prisma.invoice.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        invoices,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    }
+
+    // Backward-compatible unpaginated fallback
     const invoices = await prisma.invoice.findMany({
       where,
       orderBy: { createdAt: "desc" },
