@@ -33,30 +33,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const history = await prisma.medicalHistory.findUnique({
-      where: { patientId },
-      include: {
-        patient: { select: { id: true, name: true, age: true, gender: true, phone: true } },
-      },
-    });
-
-    // Also get dental charts for this patient
-    const dentalCharts = await prisma.dentalChart.findMany({
-      where: { patientId },
-      orderBy: { updatedAt: "desc" },
-    });
-
-    // Get patient photos
-    const photos = await prisma.patientPhoto.findMany({
-      where: { patientId },
-      orderBy: { dateAdded: "desc" },
-    });
-
-    // Get medical certificates
-    const certificates = await prisma.medicalCertificate.findMany({
-      where: { patientId },
-      orderBy: { createdAt: "desc" },
-    });
+    // Parallelize independent database queries using Promise.all to reduce total response latency
+    const [history, dentalCharts, photos, certificates] = await Promise.all([
+      prisma.medicalHistory.findUnique({
+        where: { patientId },
+        include: {
+          patient: { select: { id: true, name: true, age: true, gender: true, phone: true } },
+        },
+      }),
+      prisma.dentalChart.findMany({
+        where: { patientId },
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.patientPhoto.findMany({
+        where: { patientId },
+        orderBy: { dateAdded: "desc" },
+      }),
+      prisma.medicalCertificate.findMany({
+        where: { patientId },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
 
     return NextResponse.json({
       history,
