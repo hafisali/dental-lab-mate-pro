@@ -10,10 +10,10 @@ const PLAN_PRICES: Record<string, number> = {
   enterprise: 4999,
 };
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as any;
+    const user = session?.user as { role?: string } | undefined;
     if (user?.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -22,63 +22,53 @@ export async function GET(req: NextRequest) {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get all labs for calculations
-    const [allLabs, subscriptions, newLabsThisMonth, newLabsLastMonth] = await Promise.all([
+    // Bolt Optimization: Query lab records and subscriptions in parallel.
+    // Derived metrics (newLabsThisMonth, newLabsLastMonth, churnedLabs) are calculated in-memory from allLabs
+    // to eliminate 2 extra count queries and unnecessary joins.
+    const [allLabs, subscriptions] = await Promise.all([
       prisma.lab.findMany({
         select: {
-          id: true,
-          name: true,
           plan: true,
-          planTier: true,
           isActive: true,
           createdAt: true,
-          planExpiresAt: true,
-          subscription: {
-            select: {
-              id: true,
-              status: true,
-              currentPeriodStart: true,
-              currentPeriodEnd: true,
-              stripePriceId: true,
-              cancelAtPeriodEnd: true,
-            },
-          },
         },
       }),
       prisma.subscription.findMany({
-        include: {
+        select: {
+          id: true,
+          status: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+          cancelAtPeriodEnd: true,
           lab: {
             select: {
               id: true,
               name: true,
               plan: true,
               slug: true,
-              isActive: true,
             },
           },
         },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.lab.count({ where: { createdAt: { gte: startOfMonth } } }),
-      prisma.lab.count({
-        where: { createdAt: { gte: startOfLastMonth, lte: endOfLastMonth } },
-      }),
     ]);
 
-    // Calculate MRR
+    // Bolt Optimization: Single O(N) loop to calculate MRR, revenue by plan, customer counts,
+    // churn, and new lab registrations without redundant array iterations or extra DB queries.
     let totalMRR = 0;
+    let totalPayingCustomers = 0;
+    let trialLabsCount = 0;
+    let churnedLabs = 0;
+    let newLabsThisMonth = 0;
+    let newLabsLastMonth = 0;
+
     const revenueByPlan: Record<string, { count: number; revenue: number }> = {
       trial: { count: 0, revenue: 0 },
       basic: { count: 0, revenue: 0 },
       pro: { count: 0, revenue: 0 },
       enterprise: { count: 0, revenue: 0 },
     };
-
-    let totalPayingCustomers = 0;
-    let trialLabsCount = 0;
-    let convertedFromTrial = 0;
 
     for (const lab of allLabs) {
       const plan = lab.plan.toLowerCase();
@@ -99,18 +89,19 @@ export async function GET(req: NextRequest) {
       if (plan === "trial") {
         trialLabsCount++;
       }
+
+      if (!lab.isActive) {
+        churnedLabs++;
+      }
+
+      if (lab.createdAt >= startOfMonth) {
+        newLabsThisMonth++;
+      }
+
+      if (lab.createdAt >= startOfLastMonth && lab.createdAt <= endOfLastMonth) {
+        newLabsLastMonth++;
+      }
     }
-
-    // Labs that were trial and are now paid (approximation)
-    const paidLabs = allLabs.filter(
-      (l) => l.isActive && l.plan.toLowerCase() !== "trial"
-    );
-    convertedFromTrial = paidLabs.length;
-
-    // Churn: labs that became inactive in the last 30 days
-    // (approximate - labs that are inactive and were updated recently)
-    const inactiveLabs = allLabs.filter((l) => !l.isActive);
-    const churnedLabs = inactiveLabs.length;
 
     // Conversion rate: paid / (paid + trial)
     const totalWithPotential = totalPayingCustomers + trialLabsCount;
