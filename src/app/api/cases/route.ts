@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateCaseNumber } from "@/lib/utils";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma, CaseStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
 
-    const user = session.user as any;
+    const user = session.user as { id?: string; role?: string };
     const searchParams = req.nextUrl.searchParams;
 
     const status = searchParams.get("status");
@@ -30,13 +31,13 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const skip = (page - 1) * limit;
 
-    const where: any = { ...getTenantWhere(labId) };
-    if (status) where.status = status;
+    const where: Prisma.CaseWhereInput = { ...getTenantWhere(labId) };
+    if (status) where.status = status as CaseStatus;
     if (dentistId) where.dentistId = dentistId;
     if (technicianId) where.technicianId = technicianId;
 
     // For technician role, only show their assigned cases
-    if (user.role === "TECHNICIAN") {
+    if (user.role === "TECHNICIAN" && user.id) {
       where.technicianId = user.id;
     }
 
@@ -49,16 +50,25 @@ export async function GET(req: NextRequest) {
       ];
     }
 
+    // Omit `files` payload from list queries to minimize transfer size and database join work
     const [cases, total] = await Promise.all([
       prisma.case.findMany({
         where,
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          caseNumber: true,
+          date: true,
+          workType: true,
+          status: true,
+          priority: true,
+          amount: true,
+          createdAt: true,
+          updatedAt: true,
           dentist: { select: { id: true, name: true, clinicName: true, phone: true, whatsapp: true } },
           patient: { select: { id: true, name: true } },
-          files: { select: { id: true, fileName: true, fileType: true, filePath: true, fileSize: true } },
         },
       }),
       prisma.case.count({ where }),
