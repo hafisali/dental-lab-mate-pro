@@ -98,25 +98,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Find patients with this phone number
-    const patients = await prisma.patient.findMany({
-      where: { phone },
-      select: { id: true },
-    });
-
-    if (patients.length === 0) {
-      return NextResponse.json({
-        success: true,
-        appointments: [],
-        message: "No appointments found for this phone number",
-      });
-    }
-
-    const patientIds = patients.map((p) => p.id);
-
+    // Fetch scheduled/confirmed appointments for patient with matching phone number in a single query
     const appointments = await prisma.appointment.findMany({
       where: {
-        patientId: { in: patientIds },
+        patient: { phone },
         status: { in: ["SCHEDULED", "CONFIRMED"] },
       },
       orderBy: { date: "asc" },
@@ -124,6 +109,14 @@ export async function GET(req: NextRequest) {
         patient: { select: { name: true, phone: true } },
       },
     });
+
+    if (appointments.length === 0) {
+      return NextResponse.json({
+        success: true,
+        appointments: [],
+        message: "No appointments found for this phone number",
+      });
+    }
 
     const formatted = appointments.map((apt) => ({
       reference: `APT-${apt.id.slice(-6).toUpperCase()}`,
@@ -160,16 +153,13 @@ export async function DELETE(req: NextRequest) {
     // Extract the last 6 chars from the reference (APT-XXXXXX)
     const idSuffix = ref.replace("APT-", "").toLowerCase();
 
-    // Find appointment where id ends with the suffix
-    const appointments = await prisma.appointment.findMany({
+    // Find appointment where id ends with suffix directly in DB query
+    const appointment = await prisma.appointment.findFirst({
       where: {
         status: { in: ["SCHEDULED", "CONFIRMED"] },
+        id: { endsWith: idSuffix, mode: "insensitive" },
       },
     });
-
-    const appointment = appointments.find((apt) =>
-      apt.id.toLowerCase().endsWith(idSuffix)
-    );
 
     if (!appointment) {
       return NextResponse.json(
