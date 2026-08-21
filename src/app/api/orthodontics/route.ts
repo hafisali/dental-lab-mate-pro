@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma, OrthoStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,8 +28,8 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const skip = (page - 1) * limit;
 
-    const where: any = { ...getTenantWhere(labId) };
-    if (status) where.status = status;
+    const where: Prisma.OrthodonticPlanWhereInput = { ...getTenantWhere(labId) };
+    if (status) where.status = status as OrthoStatus;
     if (patientId) where.patientId = patientId;
 
     if (search) {
@@ -39,6 +40,8 @@ export async function GET(req: NextRequest) {
       ];
     }
 
+    // Performance optimization: Omit heavy full `records` array in list response.
+    // Records are fetched on-demand when opening individual plan details via /api/orthodontics/[id].
     const [plans, total] = await Promise.all([
       prisma.orthodonticPlan.findMany({
         where,
@@ -49,7 +52,6 @@ export async function GET(req: NextRequest) {
           patient: { select: { id: true, name: true } },
           dentist: { select: { id: true, name: true, clinicName: true } },
           payments: { orderBy: { date: "desc" } },
-          records: { orderBy: { date: "desc" } },
         },
       }),
       prisma.orthodonticPlan.count({ where }),
