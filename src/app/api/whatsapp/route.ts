@@ -10,10 +10,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as { id: string; labId?: string };
     const labId = user.labId;
 
-    // Return list of dentists with phone/whatsapp numbers for the selector
+    // Return list of dentists with phone/whatsapp numbers for the selector.
+    // Omit unused _count subquery to prevent unnecessary relational database counts.
     const dentists = await prisma.dentist.findMany({
       where: {
         ...(labId ? { labId } : {}),
@@ -30,7 +31,6 @@ export async function GET(req: NextRequest) {
         phone: true,
         whatsapp: true,
         balance: true,
-        _count: { select: { cases: true } },
       },
       orderBy: { name: "asc" },
     });
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as { id: string; labId?: string };
     const body = await req.json();
 
     const { dentistName, dentistId, template, message } = body;
