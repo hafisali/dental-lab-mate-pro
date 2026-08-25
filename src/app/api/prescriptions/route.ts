@@ -3,6 +3,23 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
+
+interface PrescriptionItemInput {
+  medicineName: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions?: string | null;
+}
+
+interface SessionUser {
+  id?: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  labId?: string;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,11 +42,11 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "20");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "20", 10);
     const skip = (page - 1) * limit;
 
-    const where: any = { ...getTenantWhere(labId) };
+    const where: Prisma.PrescriptionWhereInput = { ...getTenantWhere(labId) };
     if (patientId) where.patientId = patientId;
     if (dentistId) where.dentistId = dentistId;
 
@@ -85,6 +102,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const user = session.user as SessionUser;
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     let labId: string;
     try {
       labId = requireLabId(session);
@@ -103,7 +125,7 @@ export async function POST(req: NextRequest) {
     }
 
     for (let i = 0; i < body.items.length; i++) {
-      const item = body.items[i];
+      const item: PrescriptionItemInput = body.items[i];
       if (!item.medicineName || !item.dosage || !item.frequency || !item.duration) {
         return NextResponse.json(
           { error: `Item ${i + 1}: medicineName, dosage, frequency, and duration are required` },
@@ -120,7 +142,7 @@ export async function POST(req: NextRequest) {
         date: body.date ? new Date(body.date) : new Date(),
         notes: body.notes || null,
         items: {
-          create: body.items.map((item: any) => ({
+          create: body.items.map((item: PrescriptionItemInput) => ({
             medicineName: item.medicineName,
             dosage: item.dosage,
             frequency: item.frequency,
