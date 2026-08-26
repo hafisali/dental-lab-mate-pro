@@ -3,6 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
+
+type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
+  include: {
+    patient: { select: { id: true; name: true; phone: true } };
+    dentist: { select: { id: true; name: true; clinicName: true } };
+  };
+}>;
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,8 +39,8 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const skip = (page - 1) * limit;
 
-    const where: any = { ...getTenantWhere(labId) };
-    if (status) where.status = status;
+    const where: Prisma.AppointmentWhereInput = { ...getTenantWhere(labId) };
+    if (status) where.status = status as Prisma.AppointmentWhereInput["status"];
     if (dentistId) where.dentistId = dentistId;
     if (patientId) where.patientId = patientId;
 
@@ -52,15 +60,17 @@ export async function GET(req: NextRequest) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       where.date = { gte: today, lt: tomorrow };
     } else if (dateFrom || dateTo) {
-      where.date = {};
-      if (dateFrom) where.date.gte = new Date(dateFrom);
+      const dateFilter: Prisma.DateTimeFilter = {};
+      if (dateFrom) dateFilter.gte = new Date(dateFrom);
       if (dateTo) {
         const endDate = new Date(dateTo);
         endDate.setHours(23, 59, 59, 999);
-        where.date.lte = endDate;
+        dateFilter.lte = endDate;
       }
+      where.date = dateFilter;
     }
 
+    // Optimization: Parallelize findMany and count queries cleanly
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
@@ -77,7 +87,7 @@ export async function GET(req: NextRequest) {
 
     // For calendar view, group appointments by date
     if (view === "calendar") {
-      const grouped: Record<string, any[]> = {};
+      const grouped: Record<string, AppointmentWithRelations[]> = {};
       appointments.forEach((apt) => {
         const dateKey = new Date(apt.date).toISOString().split("T")[0];
         if (!grouped[dateKey]) grouped[dateKey] = [];
