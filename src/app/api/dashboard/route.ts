@@ -39,6 +39,12 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Calculate 6-month date range boundaries for single-query monthly revenue aggregation
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+
     const [
       todayCases,
       pendingCases,
@@ -47,6 +53,7 @@ export async function GET() {
       statusCounts,
       payments,
       dentistBalances,
+      allMonthlyPayments,
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
@@ -79,6 +86,17 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      // Single database query for past 6 months' payments replacing sequential loop DB calls (6 queries -> 1 query)
+      prisma.payment.findMany({
+        where: {
+          dentist: { ...tenantWhere },
+          date: { gte: sixMonthsAgo },
+        },
+        select: {
+          amount: true,
+          date: true,
+        },
+      }),
     ]);
 
     const totalIncome = payments._sum.amount || 0;
@@ -89,25 +107,26 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
+    // In-memory aggregation of payments into monthly buckets
     const monthlyRevenue: { month: string; revenue: number }[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
+      d.setDate(1);
       d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+      const year = d.getFullYear();
+      const month = d.getMonth();
 
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
+      const revenue = allMonthlyPayments.reduce((sum, p) => {
+        const pDate = new Date(p.date);
+        if (pDate.getFullYear() === year && pDate.getMonth() === month) {
+          return sum + p.amount;
+        }
+        return sum;
+      }, 0);
 
       monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
+        month: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        revenue,
       });
     }
 
