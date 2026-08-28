@@ -14,15 +14,28 @@ export async function GET(req: NextRequest) {
 
     const labId = requireLabId(session);
 
-    const lab = await prisma.lab.findUnique({
-      where: { id: labId },
-      select: {
-        planTier: true,
-        storageUsedMB: true,
-        trialEndsAt: true,
-        stripeSubscriptionId: true,
-      },
-    });
+    // Start date of current month for monthly case aggregation
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    // Parallelize lab query and usage count queries to eliminate sequential DB round-trips
+    const [lab, userCount, patientCount, caseCount] = await Promise.all([
+      prisma.lab.findUnique({
+        where: { id: labId },
+        select: {
+          planTier: true,
+          storageUsedMB: true,
+          trialEndsAt: true,
+          stripeSubscriptionId: true,
+        },
+      }),
+      prisma.user.count({ where: { labId } }),
+      prisma.patient.count({ where: { labId } }),
+      prisma.case.count({
+        where: { labId, createdAt: { gte: startOfMonth } },
+      }),
+    ]);
 
     if (!lab) {
       return NextResponse.json({ error: "Lab not found" }, { status: 404 });
@@ -30,19 +43,6 @@ export async function GET(req: NextRequest) {
 
     const tier = lab.planTier as PlanTier;
     const limits = getPlanLimits(tier);
-
-    // Count current usage
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const [userCount, patientCount, caseCount] = await Promise.all([
-      prisma.user.count({ where: { labId } }),
-      prisma.patient.count({ where: { labId } }),
-      prisma.case.count({
-        where: { labId, createdAt: { gte: startOfMonth } },
-      }),
-    ]);
 
     const storageUsedMB = lab.storageUsedMB || 0;
 
@@ -81,10 +81,11 @@ export async function GET(req: NextRequest) {
       usage,
       percentages,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[BILLING_USAGE]", error);
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
