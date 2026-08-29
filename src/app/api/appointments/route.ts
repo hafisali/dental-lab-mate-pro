@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma, AppointmentStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,8 +32,8 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const skip = (page - 1) * limit;
 
-    const where: any = { ...getTenantWhere(labId) };
-    if (status) where.status = status;
+    const where: Prisma.AppointmentWhereInput = { ...getTenantWhere(labId) };
+    if (status) where.status = status as AppointmentStatus;
     if (dentistId) where.dentistId = dentistId;
     if (patientId) where.patientId = patientId;
 
@@ -52,15 +53,19 @@ export async function GET(req: NextRequest) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       where.date = { gte: today, lt: tomorrow };
     } else if (dateFrom || dateTo) {
-      where.date = {};
-      if (dateFrom) where.date.gte = new Date(dateFrom);
+      const dateFilter: Prisma.DateTimeFilter = {};
+      if (dateFrom) dateFilter.gte = new Date(dateFrom);
       if (dateTo) {
         const endDate = new Date(dateTo);
         endDate.setHours(23, 59, 59, 999);
-        where.date.lte = endDate;
+        dateFilter.lte = endDate;
       }
+      where.date = dateFilter;
     }
 
+    const isCalendarView = view === "calendar";
+
+    // Performance Optimization: Skip total COUNT(*) query when view is 'calendar'
     const [appointments, total] = await Promise.all([
       prisma.appointment.findMany({
         where,
@@ -72,18 +77,19 @@ export async function GET(req: NextRequest) {
           dentist: { select: { id: true, name: true, clinicName: true } },
         },
       }),
-      prisma.appointment.count({ where }),
+      isCalendarView ? Promise.resolve(0) : prisma.appointment.count({ where }),
     ]);
 
     // For calendar view, group appointments by date
-    if (view === "calendar") {
-      const grouped: Record<string, any[]> = {};
+    if (isCalendarView) {
+      type AppointmentWithRelations = (typeof appointments)[number];
+      const grouped: Record<string, AppointmentWithRelations[]> = {};
       appointments.forEach((apt) => {
         const dateKey = new Date(apt.date).toISOString().split("T")[0];
         if (!grouped[dateKey]) grouped[dateKey] = [];
         grouped[dateKey].push(apt);
       });
-      return NextResponse.json({ appointments: grouped, total });
+      return NextResponse.json({ appointments: grouped, total: appointments.length });
     }
 
     return NextResponse.json({
