@@ -150,7 +150,6 @@ export async function sendFollowUpReminder(appointmentId: string, followUpDate: 
 export async function processUpcomingReminders() {
   const now = new Date();
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const in1h = new Date(now.getTime() + 60 * 60 * 1000);
 
   // Find appointments within next 24 hours that haven't been reminded
   const startOf24h = new Date(in24h);
@@ -158,45 +157,46 @@ export async function processUpcomingReminders() {
   const endOf24h = new Date(in24h);
   endOf24h.setHours(23, 59, 59, 999);
 
-  const upcoming24h = await prisma.appointment.findMany({
-    where: {
-      date: { gte: startOf24h, lte: endOf24h },
-      status: { in: ["SCHEDULED", "CONFIRMED"] },
-      reminderSent: false,
-    },
-  });
-
-  let reminded24h = 0;
-  for (const apt of upcoming24h) {
-    try {
-      await sendAppointmentReminder(apt.id, "24h");
-      reminded24h++;
-    } catch (error) {
-      console.error(`[WhatsApp Journey] Failed to send 24h reminder for ${apt.id}:`, error);
-    }
-  }
-
   // Find appointments today that haven't had 1h reminder
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
 
-  const upcomingToday = await prisma.appointment.findMany({
-    where: {
-      date: { gte: todayStart, lte: todayEnd },
-      status: { in: ["SCHEDULED", "CONFIRMED"] },
-      NOT: { notes: { contains: "1h-reminder-sent" } },
-    },
+  // Parallelize independent queries for 24h and today's appointments
+  const [upcoming24h, upcomingToday] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: startOf24h, lte: endOf24h },
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        reminderSent: false,
+      },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: todayStart, lte: todayEnd },
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        NOT: { notes: { contains: "1h-reminder-sent" } },
+      },
+    }),
+  ]);
+
+  // Process 24h reminders concurrently instead of sequentially
+  const reminder24hPromises = upcoming24h.map(async (apt) => {
+    try {
+      await sendAppointmentReminder(apt.id, "24h");
+      return true;
+    } catch (error) {
+      console.error(`[WhatsApp Journey] Failed to send 24h reminder for ${apt.id}:`, error);
+      return false;
+    }
   });
 
-  // Filter by time to find ones within next hour
-  let reminded1h = 0;
-  for (const apt of upcomingToday) {
-    try {
-      // Parse appointment time (e.g., "09:00 AM")
+  // Filter 1h reminders and process concurrently
+  const reminder1hPromises = upcomingToday
+    .filter((apt) => {
       const timeMatch = apt.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-      if (!timeMatch) continue;
+      if (!timeMatch) return false;
 
       let hours = parseInt(timeMatch[1]);
       const minutes = parseInt(timeMatch[2]);
@@ -209,20 +209,30 @@ export async function processUpcomingReminders() {
       aptTime.setHours(hours, minutes, 0, 0);
 
       const diffMs = aptTime.getTime() - now.getTime();
-      // Send if appointment is between 45 minutes and 75 minutes away
-      if (diffMs > 45 * 60 * 1000 && diffMs < 75 * 60 * 1000) {
+      return diffMs > 45 * 60 * 1000 && diffMs < 75 * 60 * 1000;
+    })
+    .map(async (apt) => {
+      try {
         await sendAppointmentReminder(apt.id, "1h");
         // Mark 1h reminder in notes
         await prisma.appointment.update({
           where: { id: apt.id },
           data: { notes: (apt.notes || "") + " | 1h-reminder-sent" },
         });
-        reminded1h++;
+        return true;
+      } catch (error) {
+        console.error(`[WhatsApp Journey] Failed to send 1h reminder for ${apt.id}:`, error);
+        return false;
       }
-    } catch (error) {
-      console.error(`[WhatsApp Journey] Failed to send 1h reminder for ${apt.id}:`, error);
-    }
-  }
+    });
+
+  const [results24h, results1h] = await Promise.all([
+    Promise.allSettled(reminder24hPromises),
+    Promise.allSettled(reminder1hPromises),
+  ]);
+
+  const reminded24h = results24h.filter((r) => r.status === "fulfilled" && r.value).length;
+  const reminded1h = results1h.filter((r) => r.status === "fulfilled" && r.value).length;
 
   return { reminded24h, reminded1h };
 }
