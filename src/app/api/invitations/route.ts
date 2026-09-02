@@ -4,6 +4,12 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
 
+interface SessionUser {
+  id?: string;
+  labId?: string;
+  role?: string;
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -11,18 +17,29 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
     if (!user.labId) {
       return NextResponse.json({ error: "No clinic associated" }, { status: 400 });
     }
 
+    // Performance optimization: Select specific fields instead of full table select
+    // to minimize memory allocation and payload size over the wire.
     const invitations = await prisma.invitation.findMany({
       where: { labId: user.labId, accepted: false },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        expiresAt: true,
+        accepted: true,
+        invitedBy: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: "desc" },
     });
 
     return NextResponse.json({ invitations });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Invitations GET error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
@@ -35,7 +52,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
     if (!user.labId) {
       return NextResponse.json({ error: "No clinic associated" }, { status: 400 });
     }
@@ -62,10 +79,10 @@ export async function POST(req: NextRequest) {
       data: {
         email,
         labId: user.labId,
-        role: role || "RECEPTION",
+        role: (role as any) || "RECEPTION",
         token,
         expiresAt,
-        invitedBy: user.id,
+        invitedBy: user.id || "",
       },
     });
 
@@ -112,7 +129,7 @@ export async function POST(req: NextRequest) {
       emailSent,
       ...(!emailSent && { token }),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Invitations POST error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
