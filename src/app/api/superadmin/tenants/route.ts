@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+
+interface SessionUser {
+  role?: string;
+}
 
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as any;
+    const user = session?.user as SessionUser | undefined;
     if (user?.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -18,7 +23,10 @@ export async function GET(req: NextRequest) {
     const sortBy = searchParams.get("sortBy") || "createdAt";
     const sortOrder = (searchParams.get("sortOrder") || "desc") as "asc" | "desc";
 
-    const where: any = {};
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+
+    const where: Prisma.LabWhereInput = {};
 
     if (search) {
       where.OR = [
@@ -39,7 +47,7 @@ export async function GET(req: NextRequest) {
       where.isActive = false;
     }
 
-    const labs = await prisma.lab.findMany({
+    const queryOptions = {
       where,
       include: {
         _count: {
@@ -60,6 +68,38 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { [sortBy]: sortOrder },
+    };
+
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam || "20", 10) || 20));
+      const skip = (page - 1) * limit;
+
+      // Parallelize findMany and count queries when pagination is active
+      const [labs, total] = await Promise.all([
+        prisma.lab.findMany({
+          ...queryOptions,
+          skip,
+          take: limit,
+        }),
+        prisma.lab.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        labs,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    }
+
+    // Default fallback capped at 100 to prevent runaway memory/query overhead
+    const labs = await prisma.lab.findMany({
+      ...queryOptions,
+      take: 100,
     });
 
     return NextResponse.json({ labs });
@@ -72,7 +112,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as any;
+    const user = session?.user as SessionUser | undefined;
     if (user?.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
