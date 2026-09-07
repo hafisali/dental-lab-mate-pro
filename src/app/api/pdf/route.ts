@@ -6,6 +6,12 @@ import prisma from "@/lib/prisma";
 // Server-side PDF generation using raw PDF spec
 // This generates simple but functional PDFs without external dependencies
 
+interface SessionUser {
+  id?: string;
+  role?: string;
+  labId?: string;
+}
+
 function escapePdf(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
@@ -77,11 +83,11 @@ function formatDate(date: Date | string): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const user = session?.user as SessionUser | undefined;
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
     const type = req.nextUrl.searchParams.get("type"); // "invoice", "case", "receipt"
     const id = req.nextUrl.searchParams.get("id");
 
@@ -89,25 +95,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "type and id are required" }, { status: 400 });
     }
 
-    // Get lab info
-    const lab = user.labId ? await prisma.lab.findUnique({ where: { id: user.labId } }) : null;
-    const labName = lab?.name || "Dental Lab";
-    const labAddress = lab?.address || "";
-    const labPhone = lab?.phone || "";
-    const labEmail = lab?.email || "";
+    // Optimization: Parallelize lab query with item query (invoice, case, or receipt)
+    // and select only required lab fields to avoid sequential DB round-trips.
+    const labPromise = user.labId
+      ? prisma.lab.findUnique({
+          where: { id: user.labId },
+          select: { name: true, address: true, phone: true, email: true },
+        })
+      : Promise.resolve(null);
 
     let lines: { text: string; x: number; y: number; size: number; bold?: boolean }[] = [];
 
     if (type === "invoice") {
-      const invoice = await prisma.invoice.findUnique({
-        where: { id },
-        include: {
-          dentist: true,
-          case: true,
-          payments: true,
-        },
-      });
+      const [lab, invoice] = await Promise.all([
+        labPromise,
+        prisma.invoice.findUnique({
+          where: { id },
+          include: {
+            dentist: true,
+            case: true,
+            payments: true,
+          },
+        }),
+      ]);
       if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+
+      const labName = lab?.name || "Dental Lab";
+      const labAddress = lab?.address || "";
+      const labPhone = lab?.phone || "";
 
       let y = 780;
       lines.push({ text: labName, x: 50, y, size: 18, bold: true });
@@ -173,14 +188,20 @@ export async function GET(req: NextRequest) {
       lines.push({ text: `Generated on ${formatDate(new Date())}`, x: 50, y: 46, size: 7 });
 
     } else if (type === "case") {
-      const caseData = await prisma.case.findUnique({
-        where: { id },
-        include: {
-          dentist: true,
-          patient: true,
-        },
-      });
+      const [lab, caseData] = await Promise.all([
+        labPromise,
+        prisma.case.findUnique({
+          where: { id },
+          include: {
+            dentist: true,
+            patient: true,
+          },
+        }),
+      ]);
       if (!caseData) return NextResponse.json({ error: "Case not found" }, { status: 404 });
+
+      const labName = lab?.name || "Dental Lab";
+      const labAddress = lab?.address || "";
 
       let y = 780;
       lines.push({ text: labName, x: 50, y, size: 18, bold: true });
@@ -232,14 +253,20 @@ export async function GET(req: NextRequest) {
       lines.push({ text: `Generated on ${formatDate(new Date())}`, x: 50, y: 46, size: 7 });
 
     } else if (type === "receipt") {
-      const payment = await prisma.payment.findUnique({
-        where: { id },
-        include: {
-          dentist: true,
-          invoice: true,
-        },
-      });
+      const [lab, payment] = await Promise.all([
+        labPromise,
+        prisma.payment.findUnique({
+          where: { id },
+          include: {
+            dentist: true,
+            invoice: true,
+          },
+        }),
+      ]);
       if (!payment) return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+
+      const labName = lab?.name || "Dental Lab";
+      const labAddress = lab?.address || "";
 
       let y = 780;
       lines.push({ text: labName, x: 50, y, size: 18, bold: true });
