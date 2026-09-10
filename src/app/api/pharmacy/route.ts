@@ -3,6 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
+
+interface SaleItemInput {
+  itemId?: string;
+  itemName: string;
+  quantity: number | string;
+  price: number | string;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,8 +37,17 @@ export async function GET(req: NextRequest) {
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
 
+    // Optional dynamic pagination
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+    const isPaginated = Boolean(pageParam || limitParam);
+
+    const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(limitParam || "20", 10) || 20));
+    const skip = (page - 1) * limit;
+
     if (type === "sales") {
-      const where: any = { ...tenantWhere };
+      const where: Prisma.PharmacySaleWhereInput = { ...tenantWhere };
 
       if (dateFrom || dateTo) {
         where.date = {};
@@ -49,6 +66,32 @@ export async function GET(req: NextRequest) {
         ];
       }
 
+      if (isPaginated) {
+        const [sales, total] = await Promise.all([
+          prisma.pharmacySale.findMany({
+            where,
+            orderBy: { date: "desc" },
+            skip,
+            take: limit,
+            include: {
+              items: true,
+              patient: { select: { id: true, name: true } },
+            },
+          }),
+          prisma.pharmacySale.count({ where }),
+        ]);
+
+        return NextResponse.json({
+          sales,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+        });
+      }
+
       const sales = await prisma.pharmacySale.findMany({
         where,
         orderBy: { date: "desc" },
@@ -62,7 +105,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Default: return pharmacy items
-    const where: any = { ...tenantWhere };
+    const where: Prisma.PharmacyItemWhereInput = { ...tenantWhere };
 
     if (search) {
       where.OR = [
@@ -77,12 +120,6 @@ export async function GET(req: NextRequest) {
       where.category = category;
     }
 
-    if (lowStock === "true") {
-      where.quantity = { lte: prisma.pharmacyItem.fields.minStock };
-      // Prisma doesn't support field comparison directly, we'll filter after fetch
-      delete where.quantity;
-    }
-
     if (expiring === "true") {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
@@ -92,18 +129,66 @@ export async function GET(req: NextRequest) {
       };
     }
 
-    let items = await prisma.pharmacyItem.findMany({
+    if (lowStock === "true") {
+      // Fetch matching items for tenant first then perform in-memory lowStock filter
+      const allMatchingItems = await prisma.pharmacyItem.findMany({
+        where,
+        orderBy: { name: "asc" },
+        include: {
+          _count: { select: { sales: true } },
+        },
+      });
+
+      const filteredLowStock = allMatchingItems.filter((item) => item.quantity <= item.minStock);
+
+      if (isPaginated) {
+        const paginatedItems = filteredLowStock.slice(skip, skip + limit);
+        return NextResponse.json({
+          items: paginatedItems,
+          pagination: {
+            page,
+            limit,
+            total: filteredLowStock.length,
+            totalPages: Math.ceil(filteredLowStock.length / limit),
+          },
+        });
+      }
+
+      return NextResponse.json(filteredLowStock);
+    }
+
+    if (isPaginated) {
+      const [items, total] = await Promise.all([
+        prisma.pharmacyItem.findMany({
+          where,
+          orderBy: { name: "asc" },
+          skip,
+          take: limit,
+          include: {
+            _count: { select: { sales: true } },
+          },
+        }),
+        prisma.pharmacyItem.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        items,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    }
+
+    const items = await prisma.pharmacyItem.findMany({
       where,
       orderBy: { name: "asc" },
       include: {
         _count: { select: { sales: true } },
       },
     });
-
-    // Post-filter for low stock (since Prisma can't compare fields)
-    if (lowStock === "true") {
-      items = items.filter((item) => item.quantity <= item.minStock);
-    }
 
     return NextResponse.json(items);
   } catch (error) {
@@ -154,7 +239,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Sale must have at least one item" }, { status: 400 });
       }
 
-      const totalAmount = body.items.reduce((sum: number, item: any) => sum + (item.quantity * item.price), 0);
+      const itemsList: SaleItemInput[] = body.items;
+      const totalAmount = itemsList.reduce(
+        (sum: number, item: SaleItemInput) => sum + (Number(item.quantity) * Number(item.price)),
+        0
+      );
 
       const sale = await prisma.$transaction(async (tx) => {
         // Create sale
@@ -168,7 +257,7 @@ export async function POST(req: NextRequest) {
             doctorName: body.doctorName || null,
             labId,
             items: {
-              create: body.items.map((item: any) => ({
+              create: itemsList.map((item: SaleItemInput) => ({
                 itemId: item.itemId || null,
                 itemName: item.itemName,
                 quantity: Number(item.quantity),
@@ -180,8 +269,8 @@ export async function POST(req: NextRequest) {
           include: { items: true },
         });
 
-        // Deduct stock for each item
-        for (const item of body.items) {
+        // Sequentially deduct stock inside interactive transaction handle to avoid Prisma connection concurrency issues
+        for (const item of itemsList) {
           if (item.itemId) {
             await tx.pharmacyItem.update({
               where: { id: item.itemId },
