@@ -4,6 +4,12 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
 
+interface SessionUser {
+  id?: string;
+  role?: string;
+  labId?: string;
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
@@ -13,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     let labId: string;
     try {
-      labId = requireLabId(session);
+      labId = requireLabId(session as { user?: SessionUser });
     } catch {
       return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
@@ -28,7 +34,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         },
         cases: {
           orderBy: { createdAt: "desc" },
-          include: {
+          select: {
+            id: true,
+            caseNumber: true,
+            date: true,
+            createdAt: true,
+            workType: true,
+            status: true,
+            amount: true,
             dentist: { select: { id: true, name: true } },
             files: { select: { id: true } },
           },
