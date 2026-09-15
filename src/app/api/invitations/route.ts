@@ -4,6 +4,11 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
 
+interface SessionUser {
+  id?: string;
+  labId?: string;
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -11,18 +16,28 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
     if (!user.labId) {
       return NextResponse.json({ error: "No clinic associated" }, { status: 400 });
     }
 
+    // Optimization: Select only necessary fields for invitation list payload
     const invitations = await prisma.invitation.findMany({
       where: { labId: user.labId, accepted: false },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        expiresAt: true,
+        accepted: true,
+        invitedBy: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: "desc" },
     });
 
     return NextResponse.json({ invitations });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Invitations GET error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
@@ -35,8 +50,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
-    if (!user.labId) {
+    const user = session.user as SessionUser;
+    if (!user.labId || !user.id) {
       return NextResponse.json({ error: "No clinic associated" }, { status: 400 });
     }
 
@@ -46,10 +61,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    // Check if already invited
-    const existing = await prisma.invitation.findUnique({
-      where: { email_labId: { email, labId: user.labId } },
-    });
+    // Optimization: Parallelize checking existing invitation and fetching lab details upfront
+    // using Promise.all to eliminate sequential database round-trips when sending emails.
+    const [existing, lab] = await Promise.all([
+      prisma.invitation.findUnique({
+        where: { email_labId: { email, labId: user.labId } },
+      }),
+      prisma.lab.findUnique({
+        where: { id: user.labId },
+        select: { name: true },
+      }),
+    ]);
 
     if (existing && !existing.accepted) {
       return NextResponse.json({ error: "This email has already been invited" }, { status: 400 });
@@ -76,7 +98,6 @@ export async function POST(req: NextRequest) {
         const { Resend } = await import("resend");
         const resend = new Resend(process.env.RESEND_API_KEY);
 
-        const lab = await prisma.lab.findUnique({ where: { id: user.labId } });
         const joinUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/join/${token}`;
 
         await resend.emails.send({
@@ -112,7 +133,7 @@ export async function POST(req: NextRequest) {
       emailSent,
       ...(!emailSent && { token }),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Invitations POST error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
