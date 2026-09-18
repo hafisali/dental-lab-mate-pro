@@ -11,9 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Plus, Users, Loader2, Search, UserCheck, UserX, Clock,
-  Banknote, CheckCircle2, Calendar, XCircle, AlertCircle,
-  Edit3, UserMinus, Phone, Mail, CreditCard, ChevronLeft, ChevronRight,
+  Plus, Users, Loader2, Search, UserCheck, Clock,
+  Banknote, CheckCircle2, Calendar,
+  Edit3, UserMinus, Phone, Mail, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -23,6 +23,45 @@ import { StatCard } from "@/components/shared/stat-card";
 import { GlassCard } from "@/components/shared/glass-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+
+interface StaffAttendanceItem {
+  id: string;
+  staffId: string;
+  date: string;
+  status: "PRESENT" | "ABSENT" | "HALF_DAY" | "LEAVE";
+  notes?: string | null;
+}
+
+interface StaffPaymentItem {
+  id: string;
+  staffId: string;
+  date: string;
+  amount: number;
+  method: string;
+  remarks?: string | null;
+  deductions: number;
+  bonuses: number;
+}
+
+interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+  phone?: string | null;
+  email?: string | null;
+  salary: number;
+  joinedDate: string;
+  status: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
+  attendance?: StaffAttendanceItem[];
+  payments?: StaffPaymentItem[];
+  attendanceSummary?: {
+    presentDays: number;
+    absentDays: number;
+    halfDays: number;
+    leaveDays: number;
+  };
+  monthlyPaid?: number;
+}
 
 function TableSkeleton() {
   return (
@@ -112,9 +151,13 @@ function formatDateInput(date: Date): string {
 }
 
 export default function StaffPage() {
-  const [staffList, setStaffList] = useState<any[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Calendar month & year selection
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
 
   // Add Staff dialog
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -123,26 +166,22 @@ export default function StaffPage() {
   const [staffForm, setStaffForm] = useState({
     name: "", role: "Technician", phone: "", email: "", salary: "", joinedDate: formatDateInput(new Date()),
   });
-  const [editingStaff, setEditingStaff] = useState<any>(null);
+  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
 
-  // Attendance
+  // Attendance date selection
   const [attendanceDate, setAttendanceDate] = useState(formatDateInput(new Date()));
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
   const [savingAttendance, setSavingAttendance] = useState<string | null>(null);
-  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
-  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
-  const [allAttendance, setAllAttendance] = useState<any[]>([]);
 
-  // Payroll
+  // Payroll dialog
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [payForm, setPayForm] = useState({
     staffId: "", amount: "", method: "CASH", deductions: "", bonuses: "", remarks: "",
   });
-  const [allPayments, setAllPayments] = useState<any[]>([]);
 
-  const fetchStaff = useCallback(async () => {
+  const fetchStaff = useCallback(async (year: number, month: number) => {
     try {
-      const res = await fetch("/api/staff");
+      // Fetch target month data to support calendar/payroll navigation efficiently
+      const res = await fetch(`/api/staff?year=${year}&month=${month + 1}`);
       const data = await res.json();
       setStaffList(Array.isArray(data) ? data : []);
     } catch {
@@ -152,52 +191,62 @@ export default function StaffPage() {
     }
   }, []);
 
-  const fetchAttendanceForDate = useCallback(async (date: string) => {
-    // Attendance is included in staff data, we build from that
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const res = await fetch(`/api/staff?year=${calendarYear}&month=${calendarMonth + 1}`);
+        const data = await res.json();
+        if (isMounted) {
+          setStaffList(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        if (isMounted) toast.error("Failed to load staff");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { isMounted = false; };
+  }, [calendarYear, calendarMonth]);
+
+  // Derived attendance map for current attendanceDate (memoized to eliminate re-renders)
+  const attendanceMap = useMemo(() => {
     const map: Record<string, string> = {};
-    const dateOnly = new Date(date);
+    const dateOnly = new Date(attendanceDate);
     dateOnly.setHours(0, 0, 0, 0);
     staffList.forEach((s) => {
-      const att = s.attendance?.find((a: any) => {
+      const att = s.attendance?.find((a) => {
         const aDate = new Date(a.date);
         aDate.setHours(0, 0, 0, 0);
         return aDate.getTime() === dateOnly.getTime();
       });
       if (att) map[s.id] = att.status;
     });
-    setAttendanceMap(map);
-  }, [staffList]);
+    return map;
+  }, [staffList, attendanceDate]);
 
-  const fetchMonthAttendance = useCallback(async () => {
-    // Collect all attendance from staff data for current month view
-    const all: any[] = [];
+  // Derived attendance for monthly view (memoized)
+  const allAttendance = useMemo(() => {
+    const all: Array<StaffAttendanceItem & { staffName: string; staffId: string }> = [];
     staffList.forEach((s) => {
-      s.attendance?.forEach((a: any) => {
+      s.attendance?.forEach((a) => {
         all.push({ ...a, staffName: s.name, staffId: s.id });
       });
     });
-    setAllAttendance(all);
+    return all;
+  }, [staffList]);
 
-    // Collect all payments
-    const pays: any[] = [];
+  // Derived payments for monthly view (memoized)
+  const allPayments = useMemo(() => {
+    const pays: Array<StaffPaymentItem & { staffName: string; staffId: string; staffSalary: number }> = [];
     staffList.forEach((s) => {
-      s.payments?.forEach((p: any) => {
+      s.payments?.forEach((p) => {
         pays.push({ ...p, staffName: s.name, staffId: s.id, staffSalary: s.salary });
       });
     });
-    setAllPayments(pays);
+    return pays;
   }, [staffList]);
-
-  useEffect(() => {
-    fetchStaff();
-  }, [fetchStaff]);
-
-  useEffect(() => {
-    if (staffList.length > 0) {
-      fetchAttendanceForDate(attendanceDate);
-      fetchMonthAttendance();
-    }
-  }, [staffList, attendanceDate, fetchAttendanceForDate, fetchMonthAttendance]);
 
   // Staff stats
   const activeStaff = staffList.filter((s) => s.status === "ACTIVE");
@@ -235,12 +284,12 @@ export default function StaffPage() {
       setAddDialogOpen(false);
       setStaffForm({ name: "", role: "Technician", phone: "", email: "", salary: "", joinedDate: formatDateInput(new Date()) });
       setLoading(true);
-      fetchStaff();
+      fetchStaff(calendarYear, calendarMonth);
     } catch { toast.error("Failed to add staff"); } finally { setSaving(false); }
   };
 
   // --- Edit Staff ---
-  const openEditDialog = (staff: any) => {
+  const openEditDialog = (staff: StaffMember) => {
     setEditingStaff(staff);
     setStaffForm({
       name: staff.name,
@@ -271,7 +320,7 @@ export default function StaffPage() {
       setEditDialogOpen(false);
       setEditingStaff(null);
       setLoading(true);
-      fetchStaff();
+      fetchStaff(calendarYear, calendarMonth);
     } catch { toast.error("Failed to update staff"); } finally { setSaving(false); }
   };
 
@@ -282,7 +331,7 @@ export default function StaffPage() {
       if (!res.ok) throw new Error();
       toast.success("Staff deactivated");
       setLoading(true);
-      fetchStaff();
+      fetchStaff(calendarYear, calendarMonth);
     } catch { toast.error("Failed to deactivate"); }
   };
 
@@ -296,10 +345,9 @@ export default function StaffPage() {
         body: JSON.stringify({ type: "attendance", staffId, date: attendanceDate, status }),
       });
       if (!res.ok) throw new Error();
-      setAttendanceMap((prev) => ({ ...prev, [staffId]: status }));
       toast.success(`Marked ${attendanceLabels[status]}`);
       // Refresh full data to update summaries
-      fetchStaff();
+      fetchStaff(calendarYear, calendarMonth);
     } catch { toast.error("Failed to mark attendance"); } finally { setSavingAttendance(null); }
   };
 
@@ -327,7 +375,7 @@ export default function StaffPage() {
       setPayDialogOpen(false);
       setPayForm({ staffId: "", amount: "", method: "CASH", deductions: "", bonuses: "", remarks: "" });
       setLoading(true);
-      fetchStaff();
+      fetchStaff(calendarYear, calendarMonth);
     } catch { toast.error("Failed to record payment"); } finally { setSaving(false); }
   };
 
@@ -336,12 +384,12 @@ export default function StaffPage() {
   const monthName = new Date(calendarYear, calendarMonth).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
   const prevMonth = () => {
-    if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(calendarYear - 1); }
-    else setCalendarMonth(calendarMonth - 1);
+    if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear((y) => y - 1); }
+    else setCalendarMonth((m) => m - 1);
   };
   const nextMonth = () => {
-    if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear(calendarYear + 1); }
-    else setCalendarMonth(calendarMonth + 1);
+    if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear((y) => y + 1); }
+    else setCalendarMonth((m) => m + 1);
   };
 
   // Build heatmap data
@@ -543,7 +591,7 @@ export default function StaffPage() {
                     <TableBody>
                       {activeStaff.map((staff, index) => {
                         const currentStatus = attendanceMap[staff.id];
-                        const summary = staff.attendanceSummary || {};
+                        const summary = staff.attendanceSummary || { presentDays: 0, absentDays: 0, halfDays: 0, leaveDays: 0 };
                         return (
                           <motion.tr
                             key={staff.id}

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma, StaffStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,8 +23,37 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status");
     const search = searchParams.get("search");
 
-    const where: any = { ...getTenantWhere(labId) };
-    if (status) where.status = status;
+    // Allow dynamic year & month filtering for calendar/payroll navigation (default to current month)
+    const now = new Date();
+    const yearParam = searchParams.get("year");
+    const monthParam = searchParams.get("month"); // 1-indexed (1..12) or 0-indexed (0..11)
+
+    let targetYear = now.getFullYear();
+    let targetMonth = now.getMonth();
+
+    if (yearParam) {
+      const parsedYear = parseInt(yearParam, 10);
+      if (!isNaN(parsedYear) && parsedYear > 1900 && parsedYear < 2100) {
+        targetYear = parsedYear;
+      }
+    }
+
+    if (monthParam) {
+      const parsedMonth = parseInt(monthParam, 10);
+      if (!isNaN(parsedMonth)) {
+        // Handle both 0-indexed (0..11) and 1-indexed (1..12) inputs safely
+        targetMonth = parsedMonth >= 1 && parsedMonth <= 12 ? parsedMonth - 1 : Math.max(0, Math.min(11, parsedMonth));
+      }
+    }
+
+    // Always set date to 1st to prevent month rollover/overflow bugs
+    const monthStart = new Date(targetYear, targetMonth, 1);
+    const monthEnd = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+
+    const where: Prisma.StaffWhereInput = { ...getTenantWhere(labId) };
+    if (status) {
+      where.status = status as StaffStatus;
+    }
 
     if (search) {
       where.OR = [
@@ -33,11 +63,9 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    // Get current month range for attendance summary
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-
+    // Performance optimization: scope attendance and payment relational queries strictly to
+    // the target month date range. This prevents fetching unbounded historical attendance/payroll
+    // data as the database grows, keeping API payload compact and query execution fast.
     const staff = await prisma.staff.findMany({
       where,
       orderBy: { createdAt: "desc" },
