@@ -39,6 +39,19 @@ export async function GET() {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // Precompute date ranges for the last 6 months (setting day to 1 to prevent month rollover bugs)
+    const monthRanges = Array.from({ length: 6 }, (_, idx) => {
+      const i = 5 - idx;
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+      const monthLabel = startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+      return { startOfMonth, endOfMonth, monthLabel };
+    });
+
+    // Parallelize main dashboard metrics and monthly revenue aggregation queries to reduce DB round-trips
     const [
       todayCases,
       pendingCases,
@@ -47,6 +60,7 @@ export async function GET() {
       statusCounts,
       payments,
       dentistBalances,
+      monthlyPayments,
     ] = await Promise.all([
       prisma.case.count({
         where: { ...tenantWhere, date: { gte: today, lt: tomorrow } },
@@ -79,6 +93,17 @@ export async function GET() {
         where: { ...tenantWhere },
         _sum: { balance: true },
       }),
+      Promise.all(
+        monthRanges.map((m) =>
+          prisma.payment.aggregate({
+            where: {
+              dentist: { ...tenantWhere },
+              date: { gte: m.startOfMonth, lte: m.endOfMonth },
+            },
+            _sum: { amount: true },
+          })
+        )
+      ),
     ]);
 
     const totalIncome = payments._sum.amount || 0;
@@ -89,27 +114,10 @@ export async function GET() {
       count: s._count.status,
     }));
 
-    // Monthly revenue (last 6 months)
-    const monthlyRevenue: { month: string; revenue: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-      const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-
-      const monthPayments = await prisma.payment.aggregate({
-        where: {
-          dentist: { ...tenantWhere },
-          date: { gte: startOfMonth, lte: endOfMonth },
-        },
-        _sum: { amount: true },
-      });
-
-      monthlyRevenue.push({
-        month: startOfMonth.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
-        revenue: monthPayments._sum.amount || 0,
-      });
-    }
+    const monthlyRevenue = monthRanges.map((m, index) => ({
+      month: m.monthLabel,
+      revenue: monthlyPayments[index]._sum.amount || 0,
+    }));
 
     return NextResponse.json({
       todayCases,
