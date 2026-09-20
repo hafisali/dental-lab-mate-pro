@@ -1,0 +1,3 @@
+## 2026-09-20 - Batching and Pre-fetching Relational Data in Async Workers
+**Learning:** Calling async helper functions inside loops that issue sequential `findUnique` database calls per entity creates an O(N) database bottleneck. Pre-fetching relations in initial `findMany` calls and passing them directly to helper methods eliminates N+1 queries. Furthermore, using `Promise.allSettled` to dispatch external notifications in parallel prevents sequential network latency from multiplying across items.
+**Action:** Always inspect helper functions called inside loops for nested DB or network calls, support optional pre-fetched objects, and batch concurrent dispatches with `Promise.allSettled`.
