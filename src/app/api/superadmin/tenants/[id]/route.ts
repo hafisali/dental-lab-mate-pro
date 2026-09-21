@@ -3,22 +3,46 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
+interface SessionUser {
+  id?: string;
+  role?: string;
+  labId?: string;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as any;
+    const user = session?.user as SessionUser | undefined;
     if (user?.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;
 
+    // Performance Optimization: Select explicit fields for lab detail,
+    // users, and subscription to minimize query payload and memory allocation.
     const lab = await prisma.lab.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        email: true,
+        phone: true,
+        address: true,
+        plan: true,
+        planTier: true,
+        planExpiresAt: true,
+        maxUsers: true,
+        isActive: true,
+        stripeCustomerId: true,
+        stripeSubscriptionId: true,
+        onboardingComplete: true,
+        createdAt: true,
+        updatedAt: true,
         users: {
           select: {
             id: true,
@@ -29,7 +53,17 @@ export async function GET(
             createdAt: true,
           },
         },
-        subscription: true,
+        subscription: {
+          select: {
+            id: true,
+            status: true,
+            stripePriceId: true,
+            currentPeriodStart: true,
+            currentPeriodEnd: true,
+            cancelAtPeriodEnd: true,
+            createdAt: true,
+          },
+        },
         _count: {
           select: {
             users: true,
@@ -59,7 +93,7 @@ export async function PATCH(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    const user = session?.user as any;
+    const user = session?.user as SessionUser | undefined;
     if (user?.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
