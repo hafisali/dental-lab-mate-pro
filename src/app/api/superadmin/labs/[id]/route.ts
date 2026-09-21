@@ -3,21 +3,45 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
+interface SessionUser {
+  id?: string;
+  role?: string;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    const user = session?.user as SessionUser | undefined;
+    if (!user || user.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     const { id } = await params;
 
+    // Performance Optimization: Explicit field selection on lab query and nested
+    // user relations to prune unneeded columns and reduce memory allocation/payload.
     const lab = await prisma.lab.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        email: true,
+        phone: true,
+        address: true,
+        plan: true,
+        planTier: true,
+        planExpiresAt: true,
+        maxUsers: true,
+        isActive: true,
+        stripeCustomerId: true,
+        stripeSubscriptionId: true,
+        onboardingComplete: true,
+        createdAt: true,
+        updatedAt: true,
         users: {
           select: {
             id: true,
@@ -56,7 +80,8 @@ export async function PATCH(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    const user = session?.user as SessionUser | undefined;
+    if (!user || user.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
