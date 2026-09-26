@@ -3,6 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
+interface SessionUser {
+  id?: string;
+  labId?: string;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -10,10 +15,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
     const labId = user.labId;
 
     // Return list of dentists with phone/whatsapp numbers for the selector
+    // Performance optimization: Omit unused _count aggregate subquery to avoid unnecessary SQL COUNT queries per dentist
     const dentists = await prisma.dentist.findMany({
       where: {
         ...(labId ? { labId } : {}),
@@ -30,7 +36,6 @@ export async function GET(req: NextRequest) {
         phone: true,
         whatsapp: true,
         balance: true,
-        _count: { select: { cases: true } },
       },
       orderBy: { name: "asc" },
     });
@@ -49,7 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
     const body = await req.json();
 
     const { dentistName, dentistId, template, message } = body;
@@ -57,7 +62,7 @@ export async function POST(req: NextRequest) {
     // Log the WhatsApp message as a notification with type "whatsapp"
     const notification = await prisma.notification.create({
       data: {
-        userId: user.id,
+        userId: user.id || "",
         title: `WhatsApp: ${template || "Custom"} - ${dentistName}`,
         message: message || "",
         type: "whatsapp",
