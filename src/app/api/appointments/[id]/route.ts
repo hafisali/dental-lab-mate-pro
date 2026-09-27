@@ -72,15 +72,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { id } = await params;
 
-    // Verify the appointment belongs to this tenant
-    const existing = await prisma.appointment.findFirst({
+    // Performance optimization: Delete using deleteMany with tenant criteria in a single
+    // atomic database query, reducing database round-trips from 2 to 1.
+    const { count } = await prisma.appointment.deleteMany({
       where: { id, ...getTenantWhere(labId) },
     });
-    if (!existing) {
+
+    if (count === 0) {
       return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
     }
-
-    await prisma.appointment.delete({ where: { id } });
 
     return NextResponse.json({ success: true });
   } catch (error) {
