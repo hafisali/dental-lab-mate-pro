@@ -65,20 +65,18 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const prescription = await prisma.prescription.findFirst({
+    // Performance optimization: Delete using deleteMany with tenant criteria in a single
+    // atomic database query, reducing database round-trips from 2 to 1.
+    const { count } = await prisma.prescription.deleteMany({
       where: {
         id,
         ...getTenantWhere(labId),
       },
     });
 
-    if (!prescription) {
+    if (count === 0) {
       return NextResponse.json({ error: "Prescription not found" }, { status: 404 });
     }
-
-    await prisma.prescription.delete({
-      where: { id },
-    });
 
     return NextResponse.json({ message: "Prescription deleted" });
   } catch (error) {
