@@ -1,13 +1,35 @@
 import { sendWhatsAppMessage } from "./whatsapp";
 import { prisma } from "./prisma";
 
+interface AppointmentWithRelations {
+  id: string;
+  date: Date;
+  time: string;
+  treatment: string;
+  notes?: string | null;
+  patient: {
+    name: string;
+    phone: string | null;
+  };
+  dentist: {
+    name: string;
+  };
+}
+
 // ── 1. APPOINTMENT REMINDER ──
 // Sent 24 hours and 1 hour before appointment
-export async function sendAppointmentReminder(appointmentId: string, type: "24h" | "1h") {
-  const appointment = await prisma.appointment.findUnique({
-    where: { id: appointmentId },
-    include: { patient: true, dentist: true },
-  });
+// Accepts either appointmentId string or pre-fetched appointment object with relations to avoid N+1 queries
+export async function sendAppointmentReminder(
+  appointmentOrId: string | AppointmentWithRelations,
+  type: "24h" | "1h"
+) {
+  const appointment = typeof appointmentOrId === "string"
+    ? await prisma.appointment.findUnique({
+        where: { id: appointmentOrId },
+        include: { patient: true, dentist: true },
+      })
+    : appointmentOrId;
+
   if (!appointment || !appointment.patient.phone) return;
 
   const dateStr = new Date(appointment.date).toLocaleDateString("en-IN", {
@@ -21,7 +43,7 @@ export async function sendAppointmentReminder(appointmentId: string, type: "24h"
   await sendWhatsAppMessage(appointment.patient.phone, message);
   // Mark reminder as sent
   await prisma.appointment.update({
-    where: { id: appointmentId },
+    where: { id: appointment.id },
     data: { reminderSent: true },
   });
 }
@@ -150,7 +172,6 @@ export async function sendFollowUpReminder(appointmentId: string, followUpDate: 
 export async function processUpcomingReminders() {
   const now = new Date();
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const in1h = new Date(now.getTime() + 60 * 60 * 1000);
 
   // Find appointments within next 24 hours that haven't been reminded
   const startOf24h = new Date(in24h);
@@ -158,40 +179,50 @@ export async function processUpcomingReminders() {
   const endOf24h = new Date(in24h);
   endOf24h.setHours(23, 59, 59, 999);
 
-  const upcoming24h = await prisma.appointment.findMany({
-    where: {
-      date: { gte: startOf24h, lte: endOf24h },
-      status: { in: ["SCHEDULED", "CONFIRMED"] },
-      reminderSent: false,
-    },
-  });
-
-  let reminded24h = 0;
-  for (const apt of upcoming24h) {
-    try {
-      await sendAppointmentReminder(apt.id, "24h");
-      reminded24h++;
-    } catch (error) {
-      console.error(`[WhatsApp Journey] Failed to send 24h reminder for ${apt.id}:`, error);
-    }
-  }
-
   // Find appointments today that haven't had 1h reminder
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
 
-  const upcomingToday = await prisma.appointment.findMany({
-    where: {
-      date: { gte: todayStart, lte: todayEnd },
-      status: { in: ["SCHEDULED", "CONFIRMED"] },
-      NOT: { notes: { contains: "1h-reminder-sent" } },
-    },
+  // Parallelize initial database queries and include relations to eliminate N+1 queries
+  const [upcoming24h, upcomingToday] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: startOf24h, lte: endOf24h },
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        reminderSent: false,
+      },
+      include: { patient: true, dentist: true },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: todayStart, lte: todayEnd },
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        NOT: { notes: { contains: "1h-reminder-sent" } },
+      },
+      include: { patient: true, dentist: true },
+    }),
+  ]);
+
+  // Dispatch 24h reminders concurrently
+  const results24h = await Promise.allSettled(
+    upcoming24h.map((apt) => sendAppointmentReminder(apt, "24h"))
+  );
+  let reminded24h = 0;
+  results24h.forEach((res, index) => {
+    if (res.status === "fulfilled") {
+      reminded24h++;
+    } else {
+      console.error(
+        `[WhatsApp Journey] Failed to send 24h reminder for ${upcoming24h[index].id}:`,
+        res.reason
+      );
+    }
   });
 
-  // Filter by time to find ones within next hour
-  let reminded1h = 0;
+  // Filter 1h reminders and process concurrently
+  const candidate1h: AppointmentWithRelations[] = [];
   for (const apt of upcomingToday) {
     try {
       // Parse appointment time (e.g., "09:00 AM")
@@ -211,18 +242,35 @@ export async function processUpcomingReminders() {
       const diffMs = aptTime.getTime() - now.getTime();
       // Send if appointment is between 45 minutes and 75 minutes away
       if (diffMs > 45 * 60 * 1000 && diffMs < 75 * 60 * 1000) {
-        await sendAppointmentReminder(apt.id, "1h");
-        // Mark 1h reminder in notes
-        await prisma.appointment.update({
-          where: { id: apt.id },
-          data: { notes: (apt.notes || "") + " | 1h-reminder-sent" },
-        });
-        reminded1h++;
+        candidate1h.push(apt);
       }
     } catch (error) {
-      console.error(`[WhatsApp Journey] Failed to send 1h reminder for ${apt.id}:`, error);
+      console.error(`[WhatsApp Journey] Error evaluating 1h reminder time for ${apt.id}:`, error);
     }
   }
+
+  const results1h = await Promise.allSettled(
+    candidate1h.map(async (apt) => {
+      await sendAppointmentReminder(apt, "1h");
+      // Mark 1h reminder in notes
+      await prisma.appointment.update({
+        where: { id: apt.id },
+        data: { notes: (apt.notes || "") + " | 1h-reminder-sent" },
+      });
+    })
+  );
+
+  let reminded1h = 0;
+  results1h.forEach((res, index) => {
+    if (res.status === "fulfilled") {
+      reminded1h++;
+    } else {
+      console.error(
+        `[WhatsApp Journey] Failed to send 1h reminder for ${candidate1h[index].id}:`,
+        res.reason
+      );
+    }
+  });
 
   return { reminded24h, reminded1h };
 }
