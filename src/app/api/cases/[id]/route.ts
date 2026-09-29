@@ -117,15 +117,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { id } = await params;
 
-    // Verify the case belongs to this tenant
-    const existing = await prisma.case.findFirst({
+    // Performance Optimization: Use atomic deleteMany with tenant check
+    // to reduce database round-trips from 2 to 1 (eliminates findFirst lookup)
+    const result = await prisma.case.deleteMany({
       where: { id, ...getTenantWhere(labId) },
     });
-    if (!existing) {
+
+    if (result.count === 0) {
       return NextResponse.json({ error: "Case not found" }, { status: 404 });
     }
-
-    await prisma.case.delete({ where: { id } });
 
     return NextResponse.json({ success: true });
   } catch (error) {
