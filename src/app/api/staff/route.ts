@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma, StaffStatus } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,9 +22,11 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const status = searchParams.get("status");
     const search = searchParams.get("search");
+    const yearParam = searchParams.get("year");
+    const monthParam = searchParams.get("month");
 
-    const where: any = { ...getTenantWhere(labId) };
-    if (status) where.status = status;
+    const where: Prisma.StaffWhereInput = { ...getTenantWhere(labId) };
+    if (status) where.status = status as StaffStatus;
 
     if (search) {
       where.OR = [
@@ -33,10 +36,13 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    // Get current month range for attendance summary
+    // Determine target month range for attendance/payment filtering
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const targetYear = yearParam ? parseInt(yearParam, 10) : now.getFullYear();
+    const targetMonth = monthParam ? parseInt(monthParam, 10) : now.getMonth();
+
+    const monthStart = new Date(targetYear, targetMonth, 1);
+    const monthEnd = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
 
     const staff = await prisma.staff.findMany({
       where,
