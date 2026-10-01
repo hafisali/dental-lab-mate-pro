@@ -127,22 +127,19 @@ export default function StaffPage() {
 
   // Attendance
   const [attendanceDate, setAttendanceDate] = useState(formatDateInput(new Date()));
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
   const [savingAttendance, setSavingAttendance] = useState<string | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
-  const [allAttendance, setAllAttendance] = useState<any[]>([]);
 
   // Payroll
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [payForm, setPayForm] = useState({
     staffId: "", amount: "", method: "CASH", deductions: "", bonuses: "", remarks: "",
   });
-  const [allPayments, setAllPayments] = useState<any[]>([]);
 
   const fetchStaff = useCallback(async () => {
     try {
-      const res = await fetch("/api/staff");
+      const res = await fetch(`/api/staff?year=${calendarYear}&month=${calendarMonth}`);
       const data = await res.json();
       setStaffList(Array.isArray(data) ? data : []);
     } catch {
@@ -150,12 +147,16 @@ export default function StaffPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [calendarYear, calendarMonth]);
 
-  const fetchAttendanceForDate = useCallback(async (date: string) => {
-    // Attendance is included in staff data, we build from that
+  useEffect(() => {
+    fetchStaff();
+  }, [fetchStaff]);
+
+  // Derive attendanceMap from staffList and attendanceDate using useMemo
+  const attendanceMap = useMemo(() => {
     const map: Record<string, string> = {};
-    const dateOnly = new Date(date);
+    const dateOnly = new Date(attendanceDate);
     dateOnly.setHours(0, 0, 0, 0);
     staffList.forEach((s) => {
       const att = s.attendance?.find((a: any) => {
@@ -165,39 +166,30 @@ export default function StaffPage() {
       });
       if (att) map[s.id] = att.status;
     });
-    setAttendanceMap(map);
-  }, [staffList]);
+    return map;
+  }, [staffList, attendanceDate]);
 
-  const fetchMonthAttendance = useCallback(async () => {
-    // Collect all attendance from staff data for current month view
+  // Derive allAttendance from staffList using useMemo
+  const allAttendance = useMemo(() => {
     const all: any[] = [];
     staffList.forEach((s) => {
       s.attendance?.forEach((a: any) => {
         all.push({ ...a, staffName: s.name, staffId: s.id });
       });
     });
-    setAllAttendance(all);
+    return all;
+  }, [staffList]);
 
-    // Collect all payments
+  // Derive allPayments from staffList using useMemo
+  const allPayments = useMemo(() => {
     const pays: any[] = [];
     staffList.forEach((s) => {
       s.payments?.forEach((p: any) => {
         pays.push({ ...p, staffName: s.name, staffId: s.id, staffSalary: s.salary });
       });
     });
-    setAllPayments(pays);
+    return pays;
   }, [staffList]);
-
-  useEffect(() => {
-    fetchStaff();
-  }, [fetchStaff]);
-
-  useEffect(() => {
-    if (staffList.length > 0) {
-      fetchAttendanceForDate(attendanceDate);
-      fetchMonthAttendance();
-    }
-  }, [staffList, attendanceDate, fetchAttendanceForDate, fetchMonthAttendance]);
 
   // Staff stats
   const activeStaff = staffList.filter((s) => s.status === "ACTIVE");
@@ -296,7 +288,6 @@ export default function StaffPage() {
         body: JSON.stringify({ type: "attendance", staffId, date: attendanceDate, status }),
       });
       if (!res.ok) throw new Error();
-      setAttendanceMap((prev) => ({ ...prev, [staffId]: status }));
       toast.success(`Marked ${attendanceLabels[status]}`);
       // Refresh full data to update summaries
       fetchStaff();
