@@ -24,17 +24,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid or expired OTP" }, { status: 400 });
     }
 
-    // Mark OTP as used
-    await prisma.otpCode.update({
-      where: { id: otpRecord.id },
-      data: { used: true },
-    });
-
-    // Verify user email
-    await prisma.user.update({
-      where: { email },
-      data: { emailVerified: new Date() },
-    });
+    // Performance optimization: Concurrently mark OTP as used and update user's email verification status
+    // to reduce database round-trips from 2 to 1
+    await Promise.all([
+      prisma.otpCode.update({
+        where: { id: otpRecord.id },
+        data: { used: true },
+      }),
+      prisma.user.update({
+        where: { email },
+        data: { emailVerified: new Date() },
+      }),
+    ]);
 
     const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
     const ua = req.headers.get("user-agent") || "unknown";

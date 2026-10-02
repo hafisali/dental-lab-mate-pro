@@ -108,21 +108,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { id } = await params;
 
-    // Verify the staff belongs to this tenant
-    const existing = await prisma.staff.findFirst({
+    // Performance optimization: Atomically deactivate staff using updateMany with tenant filter,
+    // reducing database round-trips from 2 to 1.
+    const result = await prisma.staff.updateMany({
       where: { id, ...getTenantWhere(labId) },
-    });
-    if (!existing) {
-      return NextResponse.json({ error: "Staff not found" }, { status: 404 });
-    }
-
-    // Deactivate instead of delete
-    const staff = await prisma.staff.update({
-      where: { id },
       data: { status: "INACTIVE" },
     });
 
-    return NextResponse.json(staff);
+    if (result.count === 0) {
+      return NextResponse.json({ error: "Staff not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ id, status: "INACTIVE" });
   } catch (error) {
     console.error("Staff [id] DELETE error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

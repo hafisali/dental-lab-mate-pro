@@ -1,0 +1,3 @@
+## 2026-10-02 - Atomic Tenant Operations & Concurrent Async Operations
+**Learning:** Sequential DB read-check-update patterns (e.g. `findFirst` followed by `update`) add extra round-trips and introduce race conditions. Using atomic `updateMany` with tenant scope (`where: { id, ...getTenantWhere(labId) }`) cuts round-trips from 2 to 1 and enforces tenant isolation atomically. In multi-step updates without interdependencies (e.g., OTP verification), `Promise.all` executes independent writes concurrently.
+**Action:** Replace sequential read-and-update patterns with atomic `updateMany` or concurrent `Promise.all` operations in API endpoints.
