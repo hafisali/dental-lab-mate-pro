@@ -9,9 +9,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Token is required" }, { status: 400 });
     }
 
+    // Optimization: Use explicit `select` projection instead of full record fetching with `include`.
+    // This prunes unneeded database columns (id, labId, token, invitedBy, createdAt, updatedAt)
+    // from the initial query payload, speeding up database fetch and serialization.
     const invitation = await prisma.invitation.findUnique({
       where: { token },
-      include: { lab: { select: { name: true } } },
+      select: {
+        email: true,
+        role: true,
+        expiresAt: true,
+        accepted: true,
+        lab: {
+          select: { name: true },
+        },
+      },
     });
 
     if (!invitation) {
@@ -25,7 +36,7 @@ export async function GET(req: NextRequest) {
       expired: new Date() > invitation.expiresAt,
       accepted: invitation.accepted,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Invitation lookup error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
