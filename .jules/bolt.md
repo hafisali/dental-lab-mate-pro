@@ -1,0 +1,3 @@
+## 2026-10-05 - Batch WhatsApp Reminder Processing Optimization
+**Learning:** Sequential processing of database queries and third-party notification APIs (e.g. WhatsApp dispatches) creates N+1 query bottlenecks and multiplies network latency per item. Pre-fetching relations in batch `findMany` calls and using `Promise.allSettled` enables concurrent notification delivery without halting batch execution on single delivery failures.
+**Action:** When handling scheduled background tasks/cron jobs, pre-fetch relational data in list queries and dispatch async notifications concurrently using `Promise.allSettled`.
