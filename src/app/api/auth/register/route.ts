@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Role } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { logActivity } from "@/lib/activity-logger";
@@ -26,16 +27,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "An account with this email already exists" }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-
     let labId: string | null = null;
-    let userRole: any = "LAB_OWNER";
+    let userRole: Role = "LAB_OWNER";
+    let hashedPassword = "";
 
+    // Optimization: Parallelize CPU-heavy password hashing with DB invitation check / slug generation
     if (inviteToken) {
-      // Invitation-based registration
-      const invitation = await prisma.invitation.findUnique({
-        where: { token: inviteToken },
-      });
+      const [hashResult, invitation] = await Promise.all([
+        bcrypt.hash(password, 12),
+        prisma.invitation.findUnique({ where: { token: inviteToken } }),
+      ]);
+
+      hashedPassword = hashResult;
 
       if (!invitation) {
         return NextResponse.json({ error: "Invalid invitation token" }, { status: 400 });
@@ -59,7 +62,12 @@ export async function POST(req: NextRequest) {
       });
     } else {
       // New clinic registration
-      const slug = await generateUniqueSlug(clinicName);
+      const [hashResult, slug] = await Promise.all([
+        bcrypt.hash(password, 12),
+        generateUniqueSlug(clinicName),
+      ]);
+
+      hashedPassword = hashResult;
 
       const newLab = await prisma.lab.create({
         data: {
@@ -89,25 +97,27 @@ export async function POST(req: NextRequest) {
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    await prisma.otpCode.create({
-      data: {
-        email,
-        code: otp,
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
-      },
-    });
-
     const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
     const ua = req.headers.get("user-agent") || "unknown";
 
-    await logActivity({
-      email,
-      userId: user.id,
-      userName: name,
-      action: "REGISTER",
-      ipAddress: ip,
-      userAgent: ua,
-    });
+    // Optimization: Parallelize OTP creation and activity logging into a single Promise.all stage
+    await Promise.all([
+      prisma.otpCode.create({
+        data: {
+          email,
+          code: otp,
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        },
+      }),
+      logActivity({
+        email,
+        userId: user.id,
+        userName: name,
+        action: "REGISTER",
+        ipAddress: ip,
+        userAgent: ua,
+      }),
+    ]);
 
     // Try to send email via Resend, but also return OTP for development
     let emailSent = false;
@@ -147,7 +157,7 @@ export async function POST(req: NextRequest) {
       // In development or if Resend not configured, return OTP directly
       ...((!emailSent) && { otp }),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Registration error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
