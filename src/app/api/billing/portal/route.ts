@@ -14,7 +14,11 @@ export async function POST(req: NextRequest) {
 
     const labId = requireLabId(session);
 
-    const lab = await prisma.lab.findUnique({ where: { id: labId } });
+    // Performance optimization: Select only stripeCustomerId to reduce database query overhead
+    const lab = await prisma.lab.findUnique({
+      where: { id: labId },
+      select: { stripeCustomerId: true },
+    });
     if (!lab) {
       return NextResponse.json({ error: "Lab not found" }, { status: 404 });
     }

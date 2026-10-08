@@ -5,6 +5,13 @@ import { requireLabId } from "@/lib/tenant";
 import { createStripeCustomer, createCheckoutSession } from "@/lib/stripe";
 import prisma from "@/lib/prisma";
 
+interface SessionUser {
+  id?: string;
+  email?: string;
+  role?: string;
+  labId?: string;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -13,19 +20,26 @@ export async function POST(req: NextRequest) {
     }
 
     const labId = requireLabId(session);
-    const { priceId, interval } = await req.json();
+
+    // Performance optimization: Parallelize request body parsing with lab database query
+    // and select only required fields (name, stripeCustomerId) to minimize payload size.
+    const [{ priceId }, lab] = await Promise.all([
+      req.json().catch(() => ({})),
+      prisma.lab.findUnique({
+        where: { id: labId },
+        select: { name: true, stripeCustomerId: true },
+      }),
+    ]);
 
     if (!priceId) {
       return NextResponse.json({ error: "Price ID is required" }, { status: 400 });
     }
 
-    // Get lab and user info
-    const lab = await prisma.lab.findUnique({ where: { id: labId } });
     if (!lab) {
       return NextResponse.json({ error: "Lab not found" }, { status: 404 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
 
     // Create Stripe customer if none exists
     let customerId = lab.stripeCustomerId;
