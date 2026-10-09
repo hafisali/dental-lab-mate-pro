@@ -82,8 +82,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json();
-    const current = await loadConfig();
+    // Parallelize request body parsing and file I/O config loading
+    const [body, current] = await Promise.all([req.json(), loadConfig()]);
 
     const updated: BotConfig = {
       autoReplyEnabled:
