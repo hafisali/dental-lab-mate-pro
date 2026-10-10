@@ -1,0 +1,3 @@
+## 2026-10-10 - Staff API Pagination & Concurrent DB Querying
+**Learning:** When adding dynamic pagination to API endpoints that compute relational aggregates (e.g. staff attendance and monthly payments), executing `.count()` concurrently with `.findMany()` using `Promise.all` eliminates a database round-trip. Using `Prisma.StaffGetPayload<typeof staffQueryOptions>` provides strict type safety without needing complex generic type annotations on `typeof prisma.staff.findMany`.
+**Action:** Always type Prisma result objects with `Prisma.<Model>GetPayload<typeof queryOptions>` when typing variables outside inline query assignments.
