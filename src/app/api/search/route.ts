@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
 
     const searchTerm = q;
 
-    // Run all searches in parallel
+    // Run all searches in parallel with explicit select field projections
+    // to prune unneeded database columns and reduce payload size
     const [cases, dentists, patients, invoices] = await Promise.all([
       // Search Cases by caseNumber, workType
       prisma.case.findMany({
@@ -46,7 +47,11 @@ export async function GET(req: NextRequest) {
             { workType: { contains: searchTerm, mode: "insensitive" } },
           ],
         },
-        include: {
+        select: {
+          id: true,
+          caseNumber: true,
+          workType: true,
+          status: true,
           dentist: { select: { name: true } },
           patient: { select: { name: true } },
         },
@@ -63,6 +68,12 @@ export async function GET(req: NextRequest) {
             { clinicName: { contains: searchTerm, mode: "insensitive" } },
           ],
         },
+        select: {
+          id: true,
+          name: true,
+          clinicName: true,
+          phone: true,
+        },
         take: 5,
         orderBy: { createdAt: "desc" },
       }),
@@ -76,7 +87,10 @@ export async function GET(req: NextRequest) {
             { phone: { contains: searchTerm, mode: "insensitive" } },
           ],
         },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
           dentist: { select: { name: true } },
         },
         take: 5,
@@ -91,7 +105,11 @@ export async function GET(req: NextRequest) {
             { invoiceNumber: { contains: searchTerm, mode: "insensitive" } },
           ],
         },
-        include: {
+        select: {
+          id: true,
+          invoiceNumber: true,
+          total: true,
+          status: true,
           dentist: { select: { name: true } },
         },
         take: 5,
