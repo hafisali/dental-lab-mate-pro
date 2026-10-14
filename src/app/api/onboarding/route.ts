@@ -5,17 +5,22 @@ import prisma from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    // Optimization: Parallelize session authentication and request JSON parsing.
+    // Executing auth session verification concurrently with JSON stream parsing eliminates sequential latency.
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      req.json(),
+    ]);
+
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = session.user as any;
+    const user = session.user as { labId?: string };
     if (!user.labId) {
       return NextResponse.json({ error: "No clinic associated" }, { status: 400 });
     }
 
-    const body = await req.json();
     const {
       address,
       phone,
@@ -41,7 +46,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Onboarding error:", error);
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
