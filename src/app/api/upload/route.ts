@@ -16,12 +16,17 @@ const getUploadDir = () => {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    // Optimization: Parallelize session authentication and multipart form body parsing.
+    // Reading large form data streams concurrently with NextAuth session decoding reduces TTFB.
+    const [session, formData] = await Promise.all([
+      getServerSession(authOptions),
+      req.formData(),
+    ]);
+
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const formData = await req.formData();
     const file = formData.get("file") as File;
     const caseId = formData.get("caseId") as string;
 
