@@ -1,0 +1,3 @@
+## 2026-10-15 - Pre-fetching Relations and Concurrent Dispatching for Cron Reminders
+**Learning:** In cron/batch notification tasks (like `processUpcomingReminders`), fetching entities without including required relations causes an N+1 `findUnique` database query pattern inside reminder dispatch loops. Additionally, sequentially awaiting network calls (such as WhatsApp API dispatches) introduces significant latency.
+**Action:** Always pre-fetch required relations (`include: { patient: true, dentist: true }`) in initial batch queries, pass pre-fetched entity payloads to reminder helper functions, and use `Promise.allSettled` to execute notification dispatches concurrently.
