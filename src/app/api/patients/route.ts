@@ -3,6 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
+
+interface SessionUser {
+  id?: string;
+  labId?: string;
+  role?: string;
+  [key: string]: unknown;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,8 +29,10 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const search = searchParams.get("search");
     const dentistId = searchParams.get("dentistId");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
-    const where: any = { ...getTenantWhere(labId) };
+    const where: Prisma.PatientWhereInput = { ...getTenantWhere(labId) };
     if (dentistId) where.dentistId = dentistId;
 
     if (search) {
@@ -32,14 +42,46 @@ export async function GET(req: NextRequest) {
       ];
     }
 
+    const patientInclude = {
+      dentist: { select: { id: true, name: true } },
+      _count: { select: { cases: true } },
+    };
+
+    // Handle paginated vs non-paginated requests
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(limitParam || "20", 10) || 20));
+      const skip = (page - 1) * limit;
+
+      // Parallelize patient retrieval and count aggregation
+      const [patients, total] = await Promise.all([
+        prisma.patient.findMany({
+          where,
+          orderBy: { name: "asc" },
+          skip,
+          take: limit,
+          include: patientInclude,
+        }),
+        prisma.patient.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        patients,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    }
+
+    // Default backward-compatible non-paginated response (capped at 100)
     const patients = await prisma.patient.findMany({
       where,
       orderBy: { name: "asc" },
       take: 100,
-      include: {
-        dentist: { select: { id: true, name: true } },
-        _count: { select: { cases: true } },
-      },
+      include: patientInclude,
     });
 
     return NextResponse.json(patients);
@@ -68,7 +110,7 @@ export async function POST(req: NextRequest) {
     const patient = await prisma.patient.create({
       data: {
         name: body.name,
-        age: body.age ? parseInt(body.age) : null,
+        age: body.age ? parseInt(body.age, 10) : null,
         gender: body.gender || null,
         phone: body.phone || null,
         notes: body.notes || null,

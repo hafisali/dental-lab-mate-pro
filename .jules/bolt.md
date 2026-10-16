@@ -1,0 +1,3 @@
+## 2026-10-16 - Patients API Optimization & Backward-Compatible Pagination
+**Learning:** When adding pagination to endpoints used across multiple UI components (such as patient dropdowns and patient tables), returning a structured `{ data, pagination }` object breaks callers expecting a raw JSON array. Checking for `page` or `limit` query parameters allows returning paginated metadata when requested while maintaining a direct array return (capped with `take: 100`) for standard unpaginated requests.
+**Action:** Always check for `page`/`limit` presence to toggle paginated object response vs capped array fallback to preserve backward compatibility across all client callers.
