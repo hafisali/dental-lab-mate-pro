@@ -9,7 +9,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    // Bolt Optimization: Select only required column `emailVerified` to cut DB payload overhead
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { emailVerified: true },
+    });
+
     if (!user) {
       return NextResponse.json({ error: "No account found with this email" }, { status: 400 });
     }
@@ -18,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email is already verified" }, { status: 400 });
     }
 
-    // Invalidate old OTPs
+    // Invalidate old OTPs first to ensure newly created OTP is not invalidated
     await prisma.otpCode.updateMany({
       where: { email, used: false },
       data: { used: true },
