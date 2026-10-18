@@ -3,6 +3,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma } from "@prisma/client";
+
+interface SessionUser {
+  id?: string;
+  role?: string;
+  labId?: string;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +20,7 @@ export async function GET(req: NextRequest) {
 
     let labId: string;
     try {
-      labId = requireLabId(session);
+      labId = requireLabId(session as { user: SessionUser });
     } catch {
       return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
@@ -21,9 +28,14 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const search = searchParams.get("search");
     const all = searchParams.get("all");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
-    const where: any = { ...getTenantWhere(labId) };
-    where.active = true;
+    // Strictly type tenant filter
+    const where: Prisma.DentistWhereInput = {
+      ...getTenantWhere(labId),
+      active: true,
+    };
 
     if (search) {
       where.OR = [
@@ -33,6 +45,38 @@ export async function GET(req: NextRequest) {
       ];
     }
 
+    // Optimization: Support page-based pagination with concurrent count query when paginated
+    if (pageParam) {
+      const page = Math.max(1, parseInt(pageParam) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(limitParam || "20") || 20));
+      const skip = (page - 1) * limit;
+
+      // Parallelize findMany and count queries to avoid sequential DB round-trips
+      const [dentists, total] = await Promise.all([
+        prisma.dentist.findMany({
+          where,
+          orderBy: { name: "asc" },
+          skip,
+          take: limit,
+          include: {
+            _count: { select: { cases: true, patients: true } },
+          },
+        }),
+        prisma.dentist.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        dentists,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    }
+
+    // Unpaginated fallback (bounded to max 100 items unless all flag is passed) for backward compatibility
     const dentists = await prisma.dentist.findMany({
       where,
       orderBy: { name: "asc" },
@@ -58,7 +102,7 @@ export async function POST(req: NextRequest) {
 
     let labId: string;
     try {
-      labId = requireLabId(session);
+      labId = requireLabId(session as { user: SessionUser });
     } catch {
       return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
