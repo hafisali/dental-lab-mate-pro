@@ -328,16 +328,17 @@ async function handleBookingConfirm(phone: string, input: string, session: Conve
   }
 
   try {
-    // Find the first lab to associate with
-    const lab = await prisma.lab.findFirst({ where: { isActive: true } });
+    // Find the first lab to associate with (selecting only required id)
+    const lab = await prisma.lab.findFirst({ where: { isActive: true }, select: { id: true } });
     if (!lab) {
       resetSession(phone);
       return "Sorry, we are unable to process bookings at this time. Please contact us directly.\n\nReply *menu* for options.";
     }
 
-    // Find or use first dentist
+    // Find or use first dentist (selecting only required id)
     const dentist = await prisma.dentist.findFirst({
       where: { labId: lab.id, active: true },
+      select: { id: true },
     });
     if (!dentist) {
       resetSession(phone);
@@ -395,13 +396,18 @@ async function handleCheckStatus(phone: string, text: string, session: Conversat
   }
 
   try {
+    // Optimize: Select only required fields instead of full entity relations
     const appointment = await prisma.appointment.findFirst({
       where: {
         notes: { contains: ref },
       },
-      include: {
-        patient: true,
-        dentist: true,
+      select: {
+        date: true,
+        time: true,
+        treatment: true,
+        status: true,
+        patient: { select: { name: true } },
+        dentist: { select: { name: true } },
       },
     });
 
@@ -435,12 +441,17 @@ async function handleCancelAppointment(phone: string, text: string, session: Con
   }
 
   try {
+    // Optimize: Select only necessary fields (id, treatment, patient name)
     const appointment = await prisma.appointment.findFirst({
       where: {
         notes: { contains: ref },
         status: { in: ["SCHEDULED", "CONFIRMED"] },
       },
-      include: { patient: true },
+      select: {
+        id: true,
+        treatment: true,
+        patient: { select: { name: true } },
+      },
     });
 
     if (!appointment) {
@@ -467,29 +478,27 @@ async function handleCancelAppointment(phone: string, text: string, session: Con
 
 async function handleConfirmReply(phone: string): Promise<string | null> {
   try {
-    // Find the patient's most recent SCHEDULED appointment by phone
+    // Optimize: Consolidate patient lookup and appointment fetch into a single relational query
     const cleanPhone = formatPhoneNumber(phone);
-    const patient = await prisma.patient.findFirst({
-      where: {
-        OR: [
-          { phone: cleanPhone },
-          { phone: phone },
-          { phone: { contains: cleanPhone.slice(-10) } },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!patient) return null;
-
     const appointment = await prisma.appointment.findFirst({
       where: {
-        patientId: patient.id,
         status: "SCHEDULED",
         date: { gte: new Date() },
+        patient: {
+          OR: [
+            { phone: cleanPhone },
+            { phone: phone },
+            { phone: { contains: cleanPhone.slice(-10) } },
+          ],
+        },
       },
       orderBy: { date: "asc" },
-      include: { dentist: true },
+      select: {
+        id: true,
+        date: true,
+        time: true,
+        dentist: { select: { name: true } },
+      },
     });
 
     if (!appointment) return null;
