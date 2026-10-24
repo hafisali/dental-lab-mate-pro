@@ -1,27 +1,39 @@
+import { Prisma } from "@prisma/client";
 import { sendWhatsAppMessage } from "./whatsapp";
 import { prisma } from "./prisma";
 
+type AppointmentWithDetails = Prisma.AppointmentGetPayload<{
+  include: { patient: true; dentist: true };
+}>;
+
 // ── 1. APPOINTMENT REMINDER ──
 // Sent 24 hours and 1 hour before appointment
-export async function sendAppointmentReminder(appointmentId: string, type: "24h" | "1h") {
-  const appointment = await prisma.appointment.findUnique({
-    where: { id: appointmentId },
-    include: { patient: true, dentist: true },
-  });
-  if (!appointment || !appointment.patient.phone) return;
+export async function sendAppointmentReminder(
+  appointmentOrId: string | AppointmentWithDetails,
+  type: "24h" | "1h"
+) {
+  const appointment =
+    typeof appointmentOrId === "string"
+      ? await prisma.appointment.findUnique({
+          where: { id: appointmentOrId },
+          include: { patient: true, dentist: true },
+        })
+      : appointmentOrId;
+
+  if (!appointment || !appointment.patient?.phone) return;
 
   const dateStr = new Date(appointment.date).toLocaleDateString("en-IN", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
 
   const message = type === "24h"
-    ? `⏰ *Appointment Reminder*\n\nDear ${appointment.patient.name},\n\nThis is a reminder for your appointment tomorrow.\n\n📅 Date: ${dateStr}\n🕐 Time: ${appointment.time}\n🏥 Treatment: ${appointment.treatment}\n👨‍⚕️ Doctor: Dr. ${appointment.dentist.name}\n\nReply *CONFIRM* to confirm or *RESCHEDULE* to change your appointment.`
-    : `⏰ *Appointment in 1 Hour*\n\nDear ${appointment.patient.name},\n\nYour appointment is in 1 hour!\n\n🕐 Time: ${appointment.time}\n🏥 Treatment: ${appointment.treatment}\n👨‍⚕️ Doctor: Dr. ${appointment.dentist.name}\n\nPlease arrive 10 minutes early. See you soon!`;
+    ? `⏰ *Appointment Reminder*\n\nDear ${appointment.patient.name},\n\nThis is a reminder for your appointment tomorrow.\n\n📅 Date: ${dateStr}\n🕐 Time: ${appointment.time}\n🏥 Treatment: ${appointment.treatment}\n👨‍⚕️ Doctor: Dr. ${appointment.dentist?.name || "Doctor"}\n\nReply *CONFIRM* to confirm or *RESCHEDULE* to change your appointment.`
+    : `⏰ *Appointment in 1 Hour*\n\nDear ${appointment.patient.name},\n\nYour appointment is in 1 hour!\n\n🕐 Time: ${appointment.time}\n🏥 Treatment: ${appointment.treatment}\n👨‍⚕️ Doctor: Dr. ${appointment.dentist?.name || "Doctor"}\n\nPlease arrive 10 minutes early. See you soon!`;
 
   await sendWhatsAppMessage(appointment.patient.phone, message);
   // Mark reminder as sent
   await prisma.appointment.update({
-    where: { id: appointmentId },
+    where: { id: appointment.id },
     data: { reminderSent: true },
   });
 }
@@ -75,7 +87,7 @@ export async function sendTreatmentSummary(appointmentId: string, treatmentDetai
 
   const procedures = treatmentDetails.proceduresDone.map((p, i) => `${i + 1}. ${p}`).join("\n");
 
-  const message = `🦷 *Treatment Summary*\n\nDear ${appointment.patient.name},\n\nHere's a summary of your visit today:\n\n*Procedures Performed:*\n${procedures}\n\n*Findings:*\n${treatmentDetails.findings}\n\n*Recommendations:*\n${treatmentDetails.recommendations}\n\n👨‍⚕️ Treated by: Dr. ${appointment.dentist.name}\n\nIf you experience any discomfort, please contact us immediately.`;
+  const message = `🦷 *Treatment Summary*\n\nDear ${appointment.patient.name},\n\nHeres a summary of your visit today:\n\n*Procedures Performed:*\n${procedures}\n\n*Findings:*\n${treatmentDetails.findings}\n\n*Recommendations:*\n${treatmentDetails.recommendations}\n\n👨‍⚕️ Treated by: Dr. ${appointment.dentist.name}\n\nIf you experience any discomfort, please contact us immediately.`;
 
   await sendWhatsAppMessage(appointment.patient.phone, message);
 }
@@ -122,7 +134,7 @@ export async function sendBillDetails(invoiceId: string) {
   const paidAmount = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
   const balance = invoice.total - paidAmount;
 
-  const message = `💰 *Bill Summary*\n\nDear ${patientName},\n\nHere's your bill details:\n\n📄 Invoice: ${invoice.invoiceNumber}\n\n💵 Amount: ₹${invoice.amount.toLocaleString("en-IN")}\n${invoice.discount > 0 ? `🏷️ Discount: ₹${invoice.discount.toLocaleString("en-IN")}\n` : ""}${invoice.tax > 0 ? `📊 Tax: ₹${invoice.tax.toLocaleString("en-IN")}\n` : ""}━━━━━━━━━━━━\n💰 *Total: ₹${invoice.total.toLocaleString("en-IN")}*\n${paidAmount > 0 ? `✅ Paid: ₹${paidAmount.toLocaleString("en-IN")}\n` : ""}${balance > 0 ? `⏳ Balance: ₹${balance.toLocaleString("en-IN")}\n` : ""}\n${balance <= 0 ? "✅ *FULLY PAID* - Thank you!" : "Please clear the balance at your earliest convenience."}\n\nReply *HELP* for payment options.`;
+  const message = `💰 *Bill Summary*\n\nDear ${patientName},\n\nHeres your bill details:\n\n📄 Invoice: ${invoice.invoiceNumber}\n\n💵 Amount: ₹${invoice.amount.toLocaleString("en-IN")}\n${invoice.discount > 0 ? `🏷️ Discount: ₹${invoice.discount.toLocaleString("en-IN")}\n` : ""}${invoice.tax > 0 ? `📊 Tax: ₹${invoice.tax.toLocaleString("en-IN")}\n` : ""}━━━━━━━━━━━━\n💰 *Total: ₹${invoice.total.toLocaleString("en-IN")}*\n${paidAmount > 0 ? `✅ Paid: ₹${paidAmount.toLocaleString("en-IN")}\n` : ""}${balance > 0 ? `⏳ Balance: ₹${balance.toLocaleString("en-IN")}\n` : ""}\n${balance <= 0 ? "✅ *FULLY PAID* - Thank you!" : "Please clear the balance at your earliest convenience."}\n\nReply *HELP* for payment options.`;
 
   await sendWhatsAppMessage(patientPhone, message);
 }
@@ -150,7 +162,6 @@ export async function sendFollowUpReminder(appointmentId: string, followUpDate: 
 export async function processUpcomingReminders() {
   const now = new Date();
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const in1h = new Date(now.getTime() + 60 * 60 * 1000);
 
   // Find appointments within next 24 hours that haven't been reminded
   const startOf24h = new Date(in24h);
@@ -158,71 +169,81 @@ export async function processUpcomingReminders() {
   const endOf24h = new Date(in24h);
   endOf24h.setHours(23, 59, 59, 999);
 
-  const upcoming24h = await prisma.appointment.findMany({
-    where: {
-      date: { gte: startOf24h, lte: endOf24h },
-      status: { in: ["SCHEDULED", "CONFIRMED"] },
-      reminderSent: false,
-    },
-  });
-
-  let reminded24h = 0;
-  for (const apt of upcoming24h) {
-    try {
-      await sendAppointmentReminder(apt.id, "24h");
-      reminded24h++;
-    } catch (error) {
-      console.error(`[WhatsApp Journey] Failed to send 24h reminder for ${apt.id}:`, error);
-    }
-  }
-
   // Find appointments today that haven't had 1h reminder
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(now);
   todayEnd.setHours(23, 59, 59, 999);
 
-  const upcomingToday = await prisma.appointment.findMany({
-    where: {
-      date: { gte: todayStart, lte: todayEnd },
-      status: { in: ["SCHEDULED", "CONFIRMED"] },
-      NOT: { notes: { contains: "1h-reminder-sent" } },
-    },
+  // Parallelize initial database queries and include patient/dentist relations to avoid N+1 queries
+  const [upcoming24h, upcomingToday] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: startOf24h, lte: endOf24h },
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        reminderSent: false,
+      },
+      include: { patient: true, dentist: true },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        date: { gte: todayStart, lte: todayEnd },
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        NOT: { notes: { contains: "1h-reminder-sent" } },
+      },
+      include: { patient: true, dentist: true },
+    }),
+  ]);
+
+  // Dispatch 24h reminders concurrently
+  const results24h = await Promise.allSettled(
+    upcoming24h.map((apt) => sendAppointmentReminder(apt, "24h"))
+  );
+  const reminded24h = results24h.filter((r) => r.status === "fulfilled").length;
+  results24h.forEach((r, idx) => {
+    if (r.status === "rejected") {
+      console.error(`[WhatsApp Journey] Failed to send 24h reminder for ${upcoming24h[idx].id}:`, r.reason);
+    }
   });
 
-  // Filter by time to find ones within next hour
-  let reminded1h = 0;
-  for (const apt of upcomingToday) {
-    try {
-      // Parse appointment time (e.g., "09:00 AM")
-      const timeMatch = apt.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-      if (!timeMatch) continue;
+  // Filter today's appointments for ones within next hour
+  const upcoming1h = upcomingToday.filter((apt) => {
+    // Parse appointment time (e.g., "09:00 AM")
+    const timeMatch = apt.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!timeMatch) return false;
 
-      let hours = parseInt(timeMatch[1]);
-      const minutes = parseInt(timeMatch[2]);
-      const period = timeMatch[3].toUpperCase();
+    let hours = parseInt(timeMatch[1]);
+    const minutes = parseInt(timeMatch[2]);
+    const period = timeMatch[3].toUpperCase();
 
-      if (period === "PM" && hours !== 12) hours += 12;
-      if (period === "AM" && hours === 12) hours = 0;
+    if (period === "PM" && hours !== 12) hours += 12;
+    if (period === "AM" && hours === 12) hours = 0;
 
-      const aptTime = new Date(apt.date);
-      aptTime.setHours(hours, minutes, 0, 0);
+    const aptTime = new Date(apt.date);
+    aptTime.setHours(hours, minutes, 0, 0);
 
-      const diffMs = aptTime.getTime() - now.getTime();
-      // Send if appointment is between 45 minutes and 75 minutes away
-      if (diffMs > 45 * 60 * 1000 && diffMs < 75 * 60 * 1000) {
-        await sendAppointmentReminder(apt.id, "1h");
-        // Mark 1h reminder in notes
-        await prisma.appointment.update({
-          where: { id: apt.id },
-          data: { notes: (apt.notes || "") + " | 1h-reminder-sent" },
-        });
-        reminded1h++;
-      }
-    } catch (error) {
-      console.error(`[WhatsApp Journey] Failed to send 1h reminder for ${apt.id}:`, error);
+    const diffMs = aptTime.getTime() - now.getTime();
+    // Send if appointment is between 45 minutes and 75 minutes away
+    return diffMs > 45 * 60 * 1000 && diffMs < 75 * 60 * 1000;
+  });
+
+  // Dispatch 1h reminders concurrently
+  const results1h = await Promise.allSettled(
+    upcoming1h.map(async (apt) => {
+      await sendAppointmentReminder(apt, "1h");
+      // Mark 1h reminder in notes
+      await prisma.appointment.update({
+        where: { id: apt.id },
+        data: { notes: (apt.notes || "") + " | 1h-reminder-sent" },
+      });
+    })
+  );
+  const reminded1h = results1h.filter((r) => r.status === "fulfilled").length;
+  results1h.forEach((r, idx) => {
+    if (r.status === "rejected") {
+      console.error(`[WhatsApp Journey] Failed to send 1h reminder for ${upcoming1h[idx].id}:`, r.reason);
     }
-  }
+  });
 
   return { reminded24h, reminded1h };
 }
