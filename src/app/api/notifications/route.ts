@@ -4,6 +4,13 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireLabId } from "@/lib/tenant";
 
+interface SessionUser {
+  id: string;
+  labId?: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -11,24 +18,36 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let labId: string;
     try {
-      labId = requireLabId(session);
+      requireLabId(session);
     } catch {
       return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
 
-    const notifications = await prisma.notification.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
-
-    const unreadCount = await prisma.notification.count({
-      where: { userId: user.id, read: false },
-    });
+    // Performance Optimization: Parallelize notification fetch and unread count queries
+    // with Promise.all to reduce sequential database round-trips from 2 to 1.
+    // Also use explicit field selection to prune unneeded columns and reduce JSON payload size.
+    const [notifications, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        where: { userId: user.id },
+        select: {
+          id: true,
+          title: true,
+          message: true,
+          type: true,
+          read: true,
+          link: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      prisma.notification.count({
+        where: { userId: user.id, read: false },
+      }),
+    ]);
 
     return NextResponse.json({ notifications, unreadCount });
   } catch (error) {
@@ -44,14 +63,13 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let labId: string;
     try {
-      labId = requireLabId(session);
+      requireLabId(session);
     } catch {
       return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
 
-    const user = session.user as any;
+    const user = session.user as SessionUser;
     const body = await req.json();
 
     if (body.markAllRead) {
@@ -60,8 +78,8 @@ export async function PATCH(req: NextRequest) {
         data: { read: true },
       });
     } else if (body.id) {
-      await prisma.notification.update({
-        where: { id: body.id },
+      await prisma.notification.updateMany({
+        where: { id: body.id, userId: user.id },
         data: { read: true },
       });
     }
