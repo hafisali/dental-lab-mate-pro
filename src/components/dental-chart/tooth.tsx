@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { ToothInfo } from "./tooth-data";
 
@@ -32,7 +33,13 @@ function getToothShape(type: string, isUpper: boolean): string {
     : "M7,2 Q7,0 11,1 L16,2 Q20,1 21,1 Q25,0 25,2 L24,18 Q24,24 20,24 L12,24 Q8,24 8,18 Z";
 }
 
-export default function Tooth({ tooth, selected, onClick }: ToothProps) {
+/**
+ * Bolt Performance Optimization:
+ * Tooth component wrapped with `React.memo` to eliminate unnecessary re-renders.
+ * When a user selects/deselects a single tooth out of 32 (or 20), only that specific
+ * tooth needs to re-render, reducing tooth re-renders per click from 32 down to 1-2.
+ */
+function Tooth({ tooth, selected, onClick }: ToothProps) {
   const isUpper = tooth.quadrant <= 2 || tooth.quadrant === 5 || tooth.quadrant === 6;
   const path = getToothShape(tooth.type, isUpper);
 
@@ -69,3 +76,5 @@ export default function Tooth({ tooth, selected, onClick }: ToothProps) {
     </button>
   );
 }
+
+export default memo(Tooth);
