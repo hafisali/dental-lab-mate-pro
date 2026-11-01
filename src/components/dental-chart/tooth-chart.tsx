@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { PERMANENT_TEETH, DECIDUOUS_TEETH } from "./tooth-data";
+import { PERMANENT_TEETH, DECIDUOUS_TEETH, ToothInfo } from "./tooth-data";
 import Tooth from "./tooth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,46 +14,67 @@ interface ToothChartProps {
   className?: string;
 }
 
+// Bolt Performance Optimization:
+// Pre-compute static quadrant layouts once at module load instead of re-filtering
+// and re-sorting 32/20 items on every render pass.
+function partitionQuadrants(teeth: ToothInfo[], isPermanent: boolean) {
+  const upperQ1 = teeth
+    .filter((t) => t.quadrant === (isPermanent ? 1 : 5))
+    .sort((a, b) => b.position - a.position);
+  const upperQ2 = teeth
+    .filter((t) => t.quadrant === (isPermanent ? 2 : 6))
+    .sort((a, b) => a.position - b.position);
+  const lowerQ3 = teeth
+    .filter((t) => t.quadrant === (isPermanent ? 3 : 7))
+    .sort((a, b) => b.position - a.position);
+  const lowerQ4 = teeth
+    .filter((t) => t.quadrant === (isPermanent ? 4 : 8))
+    .sort((a, b) => a.position - b.position);
+
+  return { upperQ1, upperQ2, lowerQ3, lowerQ4 };
+}
+
+const PERMANENT_QUADRANTS = partitionQuadrants(PERMANENT_TEETH, true);
+const DECIDUOUS_QUADRANTS = partitionQuadrants(DECIDUOUS_TEETH, false);
+
 export default function ToothChart({ selectedTeeth, onChange, className }: ToothChartProps) {
   const [chartType, setChartType] = useState<"permanent" | "deciduous">("permanent");
 
-  const teeth = chartType === "permanent" ? PERMANENT_TEETH : DECIDUOUS_TEETH;
+  // Keep a ref to the latest selectedTeeth so handleToothClick remains truly stable
+  const selectedTeethRef = useRef(selectedTeeth);
+  useEffect(() => {
+    selectedTeethRef.current = selectedTeeth;
+  }, [selectedTeeth]);
 
-  const handleToothClick = (id: number) => {
-    if (selectedTeeth.includes(id)) {
-      onChange(selectedTeeth.filter((t) => t !== id));
-    } else {
-      onChange([...selectedTeeth, id]);
-    }
-  };
+  // Bolt Performance Optimization:
+  // Convert selected teeth array into a Set for O(1) membership checks during render
+  // instead of calling array.includes() 32 times.
+  const selectedSet = useMemo(() => new Set(selectedTeeth), [selectedTeeth]);
 
-  const clearSelection = () => onChange([]);
-
-  // Split teeth into upper and lower rows
-  const upperTeeth = teeth.filter(
-    (t) =>
-      t.quadrant === (chartType === "permanent" ? 1 : 5) ||
-      t.quadrant === (chartType === "permanent" ? 2 : 6)
+  // Stable callback avoids triggering unnecessary re-renders in memoized Tooth children
+  const handleToothClick = useCallback(
+    (id: number) => {
+      const current = selectedTeethRef.current;
+      if (current.includes(id)) {
+        onChange(current.filter((t) => t !== id));
+      } else {
+        onChange([...current, id]);
+      }
+    },
+    [onChange]
   );
-  const lowerTeeth = teeth.filter(
-    (t) =>
-      t.quadrant === (chartType === "permanent" ? 3 : 7) ||
-      t.quadrant === (chartType === "permanent" ? 4 : 8)
-  );
 
-  // Sort for display: upper row goes right-to-left for Q1 then left-to-right for Q2
-  const upperQ1 = upperTeeth
-    .filter((t) => t.quadrant === (chartType === "permanent" ? 1 : 5))
-    .sort((a, b) => b.position - a.position);
-  const upperQ2 = upperTeeth
-    .filter((t) => t.quadrant === (chartType === "permanent" ? 2 : 6))
-    .sort((a, b) => a.position - b.position);
-  const lowerQ3 = lowerTeeth
-    .filter((t) => t.quadrant === (chartType === "permanent" ? 3 : 7))
-    .sort((a, b) => b.position - a.position);
-  const lowerQ4 = lowerTeeth
-    .filter((t) => t.quadrant === (chartType === "permanent" ? 4 : 8))
-    .sort((a, b) => a.position - b.position);
+  const clearSelection = useCallback(() => onChange([]), [onChange]);
+
+  // Use pre-computed quadrants
+  const { upperQ1, upperQ2, lowerQ3, lowerQ4 } =
+    chartType === "permanent" ? PERMANENT_QUADRANTS : DECIDUOUS_QUADRANTS;
+
+  // Memoize sorted selected teeth list for display badge list
+  const sortedSelectedTeeth = useMemo(
+    () => (selectedTeeth.length > 0 ? [...selectedTeeth].sort((a, b) => a - b) : []),
+    [selectedTeeth]
+  );
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -99,7 +120,7 @@ export default function ToothChart({ selectedTeeth, onChange, className }: Tooth
               <Tooth
                 key={tooth.id}
                 tooth={tooth}
-                selected={selectedTeeth.includes(tooth.id)}
+                selected={selectedSet.has(tooth.id)}
                 onClick={handleToothClick}
               />
             ))}
@@ -110,7 +131,7 @@ export default function ToothChart({ selectedTeeth, onChange, className }: Tooth
               <Tooth
                 key={tooth.id}
                 tooth={tooth}
-                selected={selectedTeeth.includes(tooth.id)}
+                selected={selectedSet.has(tooth.id)}
                 onClick={handleToothClick}
               />
             ))}
@@ -124,7 +145,7 @@ export default function ToothChart({ selectedTeeth, onChange, className }: Tooth
               <Tooth
                 key={tooth.id}
                 tooth={tooth}
-                selected={selectedTeeth.includes(tooth.id)}
+                selected={selectedSet.has(tooth.id)}
                 onClick={handleToothClick}
               />
             ))}
@@ -135,7 +156,7 @@ export default function ToothChart({ selectedTeeth, onChange, className }: Tooth
               <Tooth
                 key={tooth.id}
                 tooth={tooth}
-                selected={selectedTeeth.includes(tooth.id)}
+                selected={selectedSet.has(tooth.id)}
                 onClick={handleToothClick}
               />
             ))}
@@ -144,10 +165,10 @@ export default function ToothChart({ selectedTeeth, onChange, className }: Tooth
       </div>
 
       {/* Selected teeth display */}
-      {selectedTeeth.length > 0 && (
+      {sortedSelectedTeeth.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           <span className="text-sm text-muted-foreground mr-1">Selected:</span>
-          {selectedTeeth.sort((a, b) => a - b).map((id) => (
+          {sortedSelectedTeeth.map((id) => (
             <Badge
               key={id}
               variant="secondary"
