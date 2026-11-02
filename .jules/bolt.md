@@ -1,0 +1,7 @@
+## 2025-02-15 - Redundant Query Elimination and Parallelizing Time-series Aggregations in Dashboard
+**Learning:** Sequential `for` loops aggregating monthly metrics (such as revenue or case volume) introduce unnecessary N+1 style sequential database round-trips. Furthermore, making separate `.count()` calls for sub-metrics that can be derived in-memory from a `groupBy` result (e.g. `pendingCases` and `deliveredCases` from case status counts) is highly inefficient.
+**Action:** Use `Promise.all` to fetch time-series aggregations in parallel. Ensure you use an `Object.fromEntries` lookup or loop in-memory to derive status-specific subsets (like `pending` vs `delivered` counts) from a single database `groupBy` query, eliminating redundant `.count()` queries entirely. Always set date to 1 beforehand to avoid JavaScript Month Rollover bugs.
+
+## 2025-05-15 - Batching and Parallelizing Notification Dispatches in WhatsApp Journeys
+**Learning:** Processing reminder notifications in a sequential `for...of` loop with individual `findUnique` relation lookups per item produces severe N+1 database roundtrips and high latency from network waterfalls when dispatching messages.
+**Action:** Pre-fetch relations (`include: { patient: true, dentist: true }`) in the initial candidate queries, parallelize independent candidate lookups with `Promise.all`, pass pre-fetched entity data down to individual handlers, and dispatch concurrent notifications using `Promise.allSettled`.
