@@ -4,11 +4,21 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateInvoiceNumber } from "@/lib/utils";
 import { requireLabId, getTenantWhere } from "@/lib/tenant";
+import { Prisma, InvoiceStatus } from "@prisma/client";
+
+interface SessionUser {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  role: string;
+  labId?: string | null;
+}
 
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const user = session?.user as SessionUser | undefined;
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -26,7 +36,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status");
 
     if (type === "payments") {
-      const where: any = {};
+      const where: Prisma.PaymentWhereInput = {};
       if (dentistId) where.dentistId = dentistId;
       if (labId) where.dentist = { ...tenantWhere };
 
@@ -43,10 +53,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Invoices
-    const where: any = { ...tenantWhere };
+    const where: Prisma.InvoiceWhereInput = { ...tenantWhere };
     if (dentistId) where.dentistId = dentistId;
-    if (status) where.status = status;
+    if (status && Object.values(InvoiceStatus).includes(status as InvoiceStatus)) {
+      where.status = status as InvoiceStatus;
+    }
 
+    // Performance optimization: omit full `payments` relation in invoice list view.
+    // The billing UI consumes invoice summary fields, so avoiding loading nested payment
+    // records slashes payload size and avoids unnecessary joins/eager loading.
     const invoices = await prisma.invoice.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -54,7 +69,6 @@ export async function GET(req: NextRequest) {
       include: {
         dentist: { select: { id: true, name: true } },
         case: { select: { id: true, caseNumber: true, workType: true } },
-        payments: true,
       },
     });
 
@@ -67,8 +81,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    // Performance optimization: execute session retrieval and request payload parsing concurrently
+    // to eliminate sequential async blocking latency.
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      req.json().catch(() => ({})),
+    ]);
+
+    const user = session?.user as SessionUser | undefined;
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -78,8 +99,6 @@ export async function POST(req: NextRequest) {
     } catch {
       return NextResponse.json({ error: "No clinic associated" }, { status: 403 });
     }
-
-    const body = await req.json();
 
     if (body.type === "payment") {
       // Record payment
@@ -102,9 +121,16 @@ export async function POST(req: NextRequest) {
 
       // Update invoice status if linked
       if (body.invoiceId) {
+        // Performance optimization: select only required fields (total and payment amounts)
+        // rather than full invoice record and full payment records.
         const invoice = await prisma.invoice.findUnique({
           where: { id: body.invoiceId },
-          include: { payments: true },
+          select: {
+            total: true,
+            payments: {
+              select: { amount: true },
+            },
+          },
         });
         if (invoice) {
           const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0) + body.amount;
