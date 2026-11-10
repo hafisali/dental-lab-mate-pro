@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,17 +13,17 @@ interface TrialBannerProps {
 
 export default function TrialBanner({ planTier, trialEndsAt }: TrialBannerProps) {
   const [dismissed, setDismissed] = useState(false);
-  const [daysLeft, setDaysLeft] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (planTier !== "TRIAL" || !trialEndsAt) return;
+  // Performance optimization: compute daysLeft directly during render with useMemo
+  // rather than syncing via useEffect + setState which causes cascading renders
+  // and layout flicker on initial dashboard load.
+  const daysLeft = useMemo(() => {
+    if (planTier !== "TRIAL" || !trialEndsAt) return null;
 
     const end = new Date(trialEndsAt);
     const now = new Date();
     const diffMs = end.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-    setDaysLeft(diffDays);
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   }, [planTier, trialEndsAt]);
 
   // Only show if trial, has an end date, expiring within 3 days, and not dismissed
