@@ -3,15 +3,27 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-export async function GET(req: NextRequest) {
+interface SessionUser {
+  role?: string;
+}
+
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    const user = session?.user as SessionUser | undefined;
+    if (!user || user.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    // Performance Optimization:
+    // Instead of querying users and login activity in an N+1 loop for every lab (2N+1 round trips),
+    // eager-load user emails in the initial findMany query and fetch the latest login per email
+    // in a single grouped query (reducing database round-trips from 2N+1 down to 2).
     const labs = await prisma.lab.findMany({
       include: {
+        users: {
+          select: { email: true },
+        },
         _count: {
           select: {
             users: true,
@@ -24,29 +36,48 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    // Fetch last login for each lab
-    const labsWithLogin = await Promise.all(
-      labs.map(async (lab) => {
-        const lastLoginActivity = await prisma.loginActivity.findFirst({
-          where: {
-            action: "LOGIN_SUCCESS",
-            userId: { not: null },
-            email: {
-              in: await prisma.user
-                .findMany({ where: { labId: lab.id }, select: { email: true } })
-                .then((users) => users.map((u) => u.email)),
-            },
-          },
-          orderBy: { createdAt: "desc" },
-          select: { createdAt: true },
-        });
-
-        return {
-          ...lab,
-          lastLogin: lastLoginActivity?.createdAt || null,
-        };
-      })
+    // Collect unique emails across all labs
+    const allEmails = Array.from(
+      new Set(labs.flatMap((lab) => lab.users.map((u) => u.email)).filter(Boolean))
     );
+
+    // Single batched query for the latest login timestamp per user email
+    const lastLoginByEmail = new Map<string, Date>();
+    if (allEmails.length > 0) {
+      const loginActivities = await prisma.loginActivity.groupBy({
+        by: ["email"],
+        where: {
+          action: "LOGIN_SUCCESS",
+          userId: { not: null },
+          email: { in: allEmails },
+        },
+        _max: {
+          createdAt: true,
+        },
+      });
+
+      for (const act of loginActivities) {
+        if (act._max.createdAt) {
+          lastLoginByEmail.set(act.email, act._max.createdAt);
+        }
+      }
+    }
+
+    // Attach latest login date per lab in-memory
+    const labsWithLogin = labs.map(({ users, ...lab }) => {
+      let latestLogin: Date | null = null;
+      for (const u of users) {
+        const loginDate = lastLoginByEmail.get(u.email);
+        if (loginDate && (!latestLogin || loginDate > latestLogin)) {
+          latestLogin = loginDate;
+        }
+      }
+
+      return {
+        ...lab,
+        lastLogin: latestLogin,
+      };
+    });
 
     return NextResponse.json({ labs: labsWithLogin });
   } catch (error) {
@@ -58,7 +89,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    const user = session?.user as SessionUser | undefined;
+    if (!user || user.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
@@ -90,7 +122,8 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || (session.user as any).role !== "SUPERADMIN") {
+    const user = session?.user as SessionUser | undefined;
+    if (!user || user.role !== "SUPERADMIN") {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
